@@ -55,3 +55,9 @@ _internal
 
 # Development artifacts
 json/update.json
+
+# PyInstaller & Desktop Build Artifacts
+build/
+*.spec
+__pycache__/
+*.manifest
