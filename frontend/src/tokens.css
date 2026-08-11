@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+
+:root {
+  --font-ui: "Inter", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --space-3xs: 4px;
+  --space-2xs: 8px;
+  --space-xs: 12px;
+  --space-sm: 16px;
+  --space-md: 24px;
+  --space-lg: 32px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  
+  --ink-0: #090a0f;
+  --ink-1: #11131c;
+  --ink-2: #181b28;
+  --ink-3: #212638;
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.15);
+  --text: #f8fafc;
+  --muted: #8e9bb0;
+  --accent: #6366f1;
+  --accent-cyan: #06b6d4;
+  --accent-gradient: linear-gradient(135deg, #6366f1, #06b6d4);
+  --accent-soft: rgba(99, 102, 241, 0.18);
+  --danger: #f43f5e;
+  --danger-soft: rgba(244, 63, 94, 0.18);
+  --success: #10b981;
+  --warning: #f59e0b;
+  --overlay: rgba(9, 10, 15, 0.82);
+  --shadow: 0 20px 48px rgba(0, 0, 0, 0.7);
+  --clip-video: linear-gradient(135deg, #1d4ed8, #2563eb);
+  --clip-overlay: linear-gradient(135deg, #6d28d9, #7c3aed);
+  --clip-audio: linear-gradient(135deg, #047857, #059669);
+}
