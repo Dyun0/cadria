@@ -31,8 +31,10 @@ class JobManager {
     }
 
     const jobId = uuidv4();
-    const tempPath = path.join(this.settings.outputDir, `.${jobId}.part.mp4`);
-    const outputPath = path.join(this.settings.outputDir, `${jobId}.mp4`);
+    const isAvi = (project.export?.format || '').toLowerCase() === 'avi';
+    const ext = isAvi ? '.avi' : '.mp4';
+    const tempPath = path.join(this.settings.outputDir, `.${jobId}.part${ext}`);
+    const outputPath = path.join(this.settings.outputDir, `${jobId}${ext}`);
 
     const plan = buildFfmpegPlan(project, resolvedMap, tempPath);
 

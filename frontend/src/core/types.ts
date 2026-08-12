@@ -25,7 +25,7 @@ export interface Background {
 }
 export interface ExportSettings {
   width: number; height: number; aspect: '16:9' | '9:16' | '1:1' | '4:5' | '4:3';
-  fps: 24 | 25 | 30 | 50 | 60; quality: 'draft' | 'standard' | 'high';
+  fps: 24 | 25 | 30 | 50 | 60; quality: 'draft' | 'standard' | 'high'; format?: 'mp4' | 'avi';
 }
 export interface ProjectV1 {
   version: 1; id: ID; name: string; media: Record<ID, Media>; tracks: Track[];
@@ -50,8 +50,8 @@ export const createProject = (): ProjectV1 => ({
     { id: 'overlay-1', name: '오버레이 1', kind: 'overlay', clips: [], muted: false, locked: false },
     { id: 'audio-1', name: '오디오 1', kind: 'audio', clips: [], muted: false, locked: false },
   ],
-  background: { type: 'solid', color: '#050609', color2: '#182133', blur: 20 },
-  export: { width: 1920, height: 1080, aspect: '16:9', fps: 30, quality: 'high' },
+  background: { type: 'solid', color: '#000000', color2: '#18181b', blur: 16 },
+  export: { width: 1920, height: 1080, aspect: '16:9', fps: 30, quality: 'high', format: 'mp4' },
   updatedAt: new Date().toISOString(),
 });
 

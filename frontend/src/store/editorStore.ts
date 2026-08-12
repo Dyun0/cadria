@@ -271,6 +271,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       future: [],
       selectedClipId: clip.id,
       selectedTrackId: targetTrack.id,
+      playhead: start,
       notice: { kind: 'success', message: `${media.name} 클립이 [${targetTrack.name}] 트랙에 추가되었습니다` },
     }));
   },

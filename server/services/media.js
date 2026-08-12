@@ -123,6 +123,25 @@ class MediaRegistry {
   getMediaPath(metadata) {
     return path.join(this.settings.uploadDir, metadata.storage_name);
   }
+
+  getPreviewPath(mediaId) {
+    return path.join(this.settings.uploadDir, `${mediaId}_preview.mp4`);
+  }
+}
+
+async function generateWebPreview(ffmpegBin, sourcePath, destPath) {
+  await runCommand(ffmpegBin, [
+    '-v', 'error',
+    '-i', sourcePath,
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-crf', '26',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-pix_fmt', 'yuv420p',
+    '-y',
+    destPath
+  ], 300000);
 }
 
 async function ingestUpload(file, settings, registry) {
@@ -138,6 +157,20 @@ async function ingestUpload(file, settings, registry) {
     const thumbnailPath = registry.getThumbnailPath(mediaId);
     await generateThumbnail(settings.ffmpegBin, finalPath, thumbnailPath, probed.duration, probed.is_image);
 
+    // 웹 브라우저 네이티브 미지원 비디오 형식 (AVI, MKV, WMV, MOV 등) 웹 프리뷰 변환
+    const isWebNative = (ext === '.mp4' || ext === '.webm') && (probed.codec === 'h264' || probed.codec === 'vp8' || probed.codec === 'vp9');
+    let hasPreview = false;
+
+    if (!probed.is_image && !isWebNative) {
+      const previewPath = registry.getPreviewPath(mediaId);
+      try {
+        await generateWebPreview(settings.ffmpegBin, finalPath, previewPath);
+        hasPreview = true;
+      } catch (e) {
+        console.warn(`⚠️ Web preview generation warning for ${ext}:`, e.message);
+      }
+    }
+
     const metadata = {
       media_id: mediaId,
       fileId: mediaId,
@@ -146,6 +179,7 @@ async function ingestUpload(file, settings, registry) {
       content_type: file.mimetype || 'video/mp4',
       size: file.size,
       created_at: new Date().toISOString(),
+      has_preview: hasPreview,
       ...probed
     };
 
@@ -170,6 +204,8 @@ async function ingestUpload(file, settings, registry) {
     if (fs.existsSync(finalPath)) fs.unlinkSync(finalPath);
     const thumb = registry.getThumbnailPath(mediaId);
     if (fs.existsSync(thumb)) fs.unlinkSync(thumb);
+    const preview = registry.getPreviewPath(mediaId);
+    if (fs.existsSync(preview)) fs.unlinkSync(preview);
     throw err;
   }
 }

@@ -55,6 +55,10 @@ app.post('/api/media', upload.single('media'), uploadHandler);
 app.get('/api/media/:mediaId/stream', (req, res) => {
   try {
     const metadata = registry.getMetadata(req.params.mediaId);
+    const previewPath = registry.getPreviewPath(req.params.mediaId);
+    if (fs.existsSync(previewPath)) {
+      return res.sendFile(previewPath);
+    }
     const filePath = registry.getMediaPath(metadata);
     res.sendFile(filePath);
   } catch (err) {
@@ -150,7 +154,8 @@ app.get('/api/exports/:jobId/download', (req, res) => {
       return res.status(409).json({ detail: 'Export is not completed' });
     }
     const safeName = (job.project_name || 'exported_video').replace(/[\\/:*?"<>|]/g, '_');
-    res.download(job.outputPath, `${safeName}.mp4`);
+    const ext = path.extname(job.outputPath) || '.mp4';
+    res.download(job.outputPath, `${safeName}${ext}`);
   } catch (err) {
     res.status(404).json({ detail: err.message });
   }

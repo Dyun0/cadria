@@ -424,21 +424,26 @@ function ClipRender({ clip, media, playhead, playing, selected, zIndex, stageRef
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
 
+  const cropW = Math.max(0.001, c?.width || 1);
+  const cropH = Math.max(0.001, c?.height || 1);
+  const cropX = c?.x || 0;
+  const cropY = c?.y || 0;
+
   const style: CSSProperties = {
     left: `${t.x * 100}%`, top: `${t.y * 100}%`,
     width: `${t.width * t.scale * 100}%`, height: `${t.height * t.scale * 100}%`,
     transform: `rotate(${t.rotation}deg) scale(${t.flipX ? -1 : 1}, ${t.flipY ? -1 : 1})`,
     zIndex: zIndex ?? 10,
-    ['--video-w' as any]: `${(1 / c.width) * 100}%`,
-    ['--video-h' as any]: `${(1 / c.height) * 100}%`,
-    ['--video-x' as any]: `${-(c.x / c.width) * 100}%`,
-    ['--video-y' as any]: `${-(c.y / c.height) * 100}%`,
+    ['--video-w' as any]: `${(1 / cropW) * 100}%`,
+    ['--video-h' as any]: `${(1 / cropH) * 100}%`,
+    ['--video-x' as any]: `${-(cropX / cropW) * 100}%`,
+    ['--video-y' as any]: `${-(cropY / cropH) * 100}%`,
   };
   return <div className={`stage-clip ${selected ? 'selected' : ''}`} style={style} onPointerDown={handlePointerDown} onContextMenu={(e) => { e.stopPropagation(); openCanvasContextMenu(e, clip.id); }}>
     <div className="clip-video-box">
       {media.isImage
         ? <img src={media.url} style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }} draggable={false} />
-        : <video ref={video} src={media.url} muted={!clip.audio.enabled} />}
+        : <video ref={video} src={media.url} playsInline preload="auto" muted={!clip.audio.enabled} style={{ display: 'block' }} />}
     </div>
     {selected && <div className="transform-handles">
       {['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'].map((h) => <button key={h} aria-label={`${h} 크기 조절 핸들`} className={`transform-handle ${h}`} onPointerDown={(e) => beginTransform(e, h)} />)}
@@ -868,7 +873,8 @@ function TrackContextMenu({ x, y, trackId, close }: { x: number; y: number; trac
 
 function ExportModal({ close }: { close: () => void }) {
   const s = useEditorStore(); const [exportName, setExportName] = useState(s.project.name || '내_비디오_프로젝트');
-  const [quality, setQuality] = useState<ExportSettings['quality']>('high');
+  const [quality, setQuality] = useState<ExportSettings['quality']>(s.project.export.quality || 'high');
+  const [format, setFormat] = useState<'mp4' | 'avi'>(s.project.export.format || 'mp4');
   const [job, setJob] = useState<ExportJob>(); const [busy, setBusy] = useState(false); const dialog = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -884,6 +890,7 @@ function ExportModal({ close }: { close: () => void }) {
       const p = structuredClone(s.project);
       p.name = exportName;
       p.export.quality = quality;
+      p.export.format = format;
       s.commit(p);
       setJob(await api.createExport(p));
     } catch (e) {
@@ -912,9 +919,15 @@ function ExportModal({ close }: { close: () => void }) {
         <Field label="출력 파일 이름">
           <input type="text" value={exportName} onChange={e => setExportName(e.target.value)} placeholder="내_비디오_프로젝트" style={{ width: '100%', padding: '7px 10px', background: 'var(--input-bg)', border: '1px solid var(--line)', borderRadius: '6px', color: 'var(--text)', fontSize: '12.5px' }} />
         </Field>
+        <Field label="출력 비디오 포맷">
+          <select value={format} onChange={e => setFormat(e.target.value as 'mp4' | 'avi')} style={{ width: '100%', padding: '7px 10px', background: 'var(--input-bg)', border: '1px solid var(--line)', borderRadius: '6px', color: 'var(--text)', fontSize: '12.5px' }}>
+            <option value="mp4">MP4 비디오 (.mp4)</option>
+            <option value="avi">AVI 비디오 (.avi)</option>
+          </select>
+        </Field>
         <Field label="비디오 화질 품질">
           <select value={quality} onChange={e => setQuality(e.target.value as ExportSettings['quality'])} style={{ width: '100%', padding: '7px 10px', background: 'var(--input-bg)', border: '1px solid var(--line)', borderRadius: '6px', color: 'var(--text)', fontSize: '12.5px' }}>
-            <option value="draft">표준 화질 (Standard MP4)</option>
+            <option value="draft">표준 화질 (Standard)</option>
             <option value="standard">고화질 (High Quality HD)</option>
             <option value="high">최고 화질 (Pro Ultra HD)</option>
           </select>
@@ -944,8 +957,8 @@ function ExportModal({ close }: { close: () => void }) {
 
         <div style={{ marginTop: '4px' }}>
           {job.status === 'complete' ? (
-            <a className="primary wide" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '38px', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold' }} href={job.downloadUrl || api.downloadUrl(job.id)} download={`${exportName.trim() || '내_비디오_프로젝트'}.mp4`}>
-              <Download style={{ width: 15 }} /> MP4 비디오 다운로드
+            <a className="primary wide" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '38px', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold' }} href={job.downloadUrl || api.downloadUrl(job.id)} download={`${exportName.trim() || '내_비디오_프로젝트'}.${format}`}>
+              <Download style={{ width: 15 }} /> {format.toUpperCase()} 비디오 다운로드
             </a>
           ) : !terminal(job.status) ? (
             <button className="tool-button wide" style={{ height: '36px', borderRadius: '8px', justifyContent: 'center' }} onClick={() => void cancelCurrentJob()}>

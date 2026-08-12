@@ -240,10 +240,12 @@ function buildFfmpegPlan(project, resolvedMediaMap, outputPath) {
     high: ['slow', '18']
   }[exportSettings.quality || 'standard'] || ['medium', '23'];
 
+  const isAvi = (exportSettings.format || '').toLowerCase() === 'avi' || outputPath.toLowerCase().endsWith('.avi');
+
   const argv = ['-hide_banner', '-nostdin'];
   inputs.forEach(inp => argv.push(...inp));
 
-  argv.push(
+  const outputArgs = [
     '-filter_complex', filters.join(';'),
     '-map', '[vout]',
     '-map', '[aout]',
@@ -251,15 +253,25 @@ function buildFfmpegPlan(project, resolvedMediaMap, outputPath) {
     '-preset', qualityPreset[0],
     '-crf', qualityPreset[1],
     '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac',
+    '-c:a', isAvi ? 'libmp3lame' : 'aac',
     '-b:a', exportSettings.audio_bitrate || '192k',
-    '-movflags', '+faststart',
+  ];
+
+  if (isAvi) {
+    outputArgs.push('-f', 'avi');
+  } else {
+    outputArgs.push('-movflags', '+faststart');
+  }
+
+  outputArgs.push(
     '-t', totalDurationStr,
     '-progress', 'pipe:1',
     '-nostats',
     '-y',
     outputPath
   );
+
+  argv.push(...outputArgs);
 
   return { argv, duration: maxDuration };
 }
