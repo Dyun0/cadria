@@ -315,6 +315,42 @@ h2{
 .stage-empty{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:10px;color:var(--muted)}
 .stage-empty svg{width:36px;height:36px;opacity:0.5}
 
+.upload-loading-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.upload-loading-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--card-bg);
+  border: 1px dashed var(--accent-cyan);
+  border-radius: var(--radius-md);
+  font-size: 11.5px;
+  color: var(--accent-cyan);
+  font-weight: 600;
+  animation: fadeIn 0.2s ease-in-out;
+}
+.video-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(10, 12, 18, 0.85);
+  backdrop-filter: blur(6px);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
 /* Figma Style Handles - Fully Visible Outside Video Frame */
 .transform-handles{position:absolute;inset:-7px;pointer-events:none;z-index:50}
 .transform-handle{

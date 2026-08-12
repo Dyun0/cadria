@@ -44,26 +44,46 @@ function Topbar({ openExport, confirmNewProject }: { openExport: () => void; con
   </header>;
 }
 
-function MediaLibrary({ openContextMenu, confirmDelete, onSelectMedia }: { openContextMenu: (e: React.MouseEvent, mediaId: string) => void; confirmDelete: (mediaId: string) => void; onSelectMedia: (mediaId: string) => void }) {
+function MediaLibrary({ openContextMenu, confirmDelete, onSelectMedia, onAddMediaToTrack }: { openContextMenu: (e: React.MouseEvent, mediaId: string) => void; confirmDelete: (mediaId: string) => void; onSelectMedia: (mediaId: string) => void; onAddMediaToTrack: (mediaId: string) => void }) {
   const s = useEditorStore(); const ref = useRef<HTMLInputElement>(null); const [drag, setDrag] = useState(false);
+  const [uploadingTasks, setUploadingTasks] = useState<{ id: string; name: string }[]>([]);
+
   const addFiles = async (files: FileList | File[]) => {
-    for (const f of Array.from(files)) {
-      if (!f.type.startsWith('video/') && !f.type.startsWith('audio/') && !f.type.startsWith('image/')) continue;
-      try { const m = await api.upload(f); s.addMedia(m); onSelectMedia(m.id); }
-      catch (e) { useEditorStore.setState({ notice: { kind: 'error', message: e instanceof Error ? e.message : '업로드 실패' } }); }
-    }
+    const valid = Array.from(files).filter(f => f.type.startsWith('video/') || f.type.startsWith('audio/') || f.type.startsWith('image/'));
+    await Promise.all(valid.map(async (f) => {
+      const taskId = `up-${Math.random().toString(36).substring(2, 9)}`;
+      setUploadingTasks(prev => [...prev, { id: taskId, name: f.name }]);
+      try {
+        const m = await api.upload(f);
+        s.addMedia(m);
+      } catch (e) {
+        useEditorStore.setState({ notice: { kind: 'error', message: e instanceof Error ? e.message : `${f.name} 업로드 실패` } });
+      } finally {
+        setUploadingTasks(prev => prev.filter(t => t.id !== taskId));
+      }
+    }));
   };
   return <aside className="media-panel" aria-label="미디어 라이브러리">
     <div className="panel-heading"><div><span>LIBRARY</span><h2>내 미디어</h2></div></div>
     <input ref={ref} hidden type="file" multiple accept="video/*,audio/*,image/*" onChange={(e) => e.target.files && void addFiles(e.target.files)} />
     <div className={`upload-zone ${drag ? 'is-dragging' : ''}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); void addFiles(e.dataTransfer.files); }} onClick={() => ref.current?.click()}>
-      <FolderUp /><strong>미디어/오디오 드래그 또는 클릭</strong><small>비디오 (MP4), 오디오, 이미지 지원</small>
+      <FolderUp /><strong>미디어/오디오 드래그 또는 클릭</strong><small>비디오 (MP4, AVI), 오디오, 이미지 지원</small>
     </div>
+    {uploadingTasks.length > 0 && (
+      <div className="upload-loading-list">
+        {uploadingTasks.map((item) => (
+          <div key={item.id} className="upload-loading-badge">
+            <LoaderCircle className="spin" style={{ width: 14, height: 14 }} />
+            <span>미디어 분석 및 업로드 중... ({item.name})</span>
+          </div>
+        ))}
+      </div>
+    )}
     <div className="media-list">{Object.values(s.project.media).map((m) => <div className="media-item" key={m.id} draggable onDragStart={(e) => e.dataTransfer.setData('text/plain', m.id)} onClick={() => onSelectMedia(m.id)} onContextMenu={(e) => openContextMenu(e, m.id)}>
       <div className="media-thumb">{m.thumbnailUrl ? <img src={m.thumbnailUrl} alt={m.name} /> : <Film />}</div>
       <div className="media-copy"><strong>{m.originalName || m.name}</strong><small>{tc(m.duration, s.project.export.fps)}</small></div>
       <div className="media-actions" style={{ marginLeft: 'auto', display: 'flex', gap: '3px' }}>
-        <button className="icon-button add-media-btn" title="타임라인에 추가" onClick={(e) => { e.stopPropagation(); onSelectMedia(m.id); }}><Plus /></button>
+        <button className="icon-button add-media-btn" title="타임라인 트랙에 추가" onClick={(e) => { e.stopPropagation(); onAddMediaToTrack(m.id); }}><Plus /></button>
         <button className="icon-button delete-media-btn" title="미디어 삭제" onClick={(e) => { e.stopPropagation(); confirmDelete(m.id); }}><Trash2 /></button>
       </div>
     </div>)}</div>
@@ -238,6 +258,11 @@ function getBackgroundCss(bg: ProjectV1['background']) {
 
 function ClipRender({ clip, media, playhead, playing, selected, zIndex, stageRef, setGuideLine, onClick, openCanvasContextMenu }: { clip: Clip; media: any; playhead: number; playing: boolean; selected: boolean; zIndex?: number; stageRef: React.RefObject<HTMLDivElement | null>; setGuideLine: (g: { x?: number; y?: number }) => void; onClick: () => void; openCanvasContextMenu: (e: React.MouseEvent, clipId: string) => void }) {
   const video = useRef<HTMLVideoElement>(null); const t = clip.transform; const c = clip.crop;
+  const [isMediaLoading, setIsMediaLoading] = useState(!media.isImage);
+
+  useEffect(() => {
+    if (media.isImage) setIsMediaLoading(false);
+  }, [media.isImage]);
   useEffect(() => {
     const el = video.current; if (!el || media.isImage) return;
     const mediaTime = Math.max(0, clip.sourceStart + (playhead - clip.timelineStart) * clip.speed);
@@ -441,9 +466,26 @@ function ClipRender({ clip, media, playhead, playing, selected, zIndex, stageRef
   };
   return <div className={`stage-clip ${selected ? 'selected' : ''}`} style={style} onPointerDown={handlePointerDown} onContextMenu={(e) => { e.stopPropagation(); openCanvasContextMenu(e, clip.id); }}>
     <div className="clip-video-box">
+      {isMediaLoading && (
+        <div className="video-loading-overlay">
+          <LoaderCircle className="spin" style={{ width: 22, height: 22, color: 'var(--accent-cyan)' }} />
+          <span>미디어 준비 중...</span>
+        </div>
+      )}
       {media.isImage
         ? <img src={media.url} style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }} draggable={false} />
-        : <video ref={video} src={media.url} playsInline preload="auto" muted={!clip.audio.enabled} style={{ display: 'block' }} />}
+        : <video
+            ref={video}
+            src={media.url}
+            playsInline
+            preload="auto"
+            muted={!clip.audio.enabled}
+            onWaiting={() => setIsMediaLoading(true)}
+            onLoadStart={() => setIsMediaLoading(true)}
+            onCanPlay={() => setIsMediaLoading(false)}
+            onLoadedData={() => setIsMediaLoading(false)}
+            style={{ display: 'block' }}
+          />}
     </div>
     {selected && <div className="transform-handles">
       {['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'].map((h) => <button key={h} aria-label={`${h} 크기 조절 핸들`} className={`transform-handle ${h}`} onPointerDown={(e) => beginTransform(e, h)} />)}
@@ -1089,19 +1131,18 @@ export default function App() {
     e.preventDefault(); setTrackContextMenu({ visible: true, x: e.clientX, y: e.clientY, trackId });
   };
 
-  const handleSelectMedia = (mediaId: string) => {
-    const hasClips = useEditorStore.getState().project.tracks.some((t) => t.clips.length > 0);
-    if (hasClips) {
-      setSelectTrackMediaId(mediaId);
-    } else {
-      useEditorStore.getState().addClip(mediaId);
-    }
+  const handleSelectMedia = (_mediaId: string) => {
+    useEditorStore.setState({ selectedTrackId: undefined, selectedClipId: undefined });
+  };
+
+  const handleAddMediaToTrack = (mediaId: string) => {
+    setSelectTrackMediaId(mediaId);
   };
 
   return <div className="app">
     <Topbar openExport={() => setExportOpen(true)} confirmNewProject={() => setShowConfirmNewProject(true)} />
     <div className="workbench">
-      <MediaLibrary openContextMenu={openMediaContextMenu} confirmDelete={(id) => setConfirmDeleteMediaId(id)} onSelectMedia={handleSelectMedia} />
+      <MediaLibrary openContextMenu={openMediaContextMenu} confirmDelete={(id) => setConfirmDeleteMediaId(id)} onSelectMedia={handleSelectMedia} onAddMediaToTrack={handleAddMediaToTrack} />
       <Stage openCanvasContextMenu={openCanvasContextMenu} />
       <Inspector />
     </div>
