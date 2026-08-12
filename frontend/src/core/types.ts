@@ -36,8 +36,15 @@ export const DEFAULT_CROP: NormalizedCrop = { x: 0, y: 0, width: 1, height: 1 };
 export const DEFAULT_TRANSFORM: NormalizedTransform = {
   x: 0, y: 0, width: 1, height: 1, scale: 1, rotation: 0, flipX: false, flipY: false,
 };
+export const safeUUID = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'id-' + Math.random().toString(36).substring(2, 11) + '-' + Date.now().toString(36);
+};
+
 export const createProject = (): ProjectV1 => ({
-  version: 1, id: crypto.randomUUID(), name: '제목 없는 프로젝트', media: {},
+  version: 1, id: safeUUID(), name: '제목 없는 프로젝트', media: {},
   tracks: [
     { id: 'video-main', name: '메인 비디오', kind: 'video', clips: [], muted: false, locked: false },
     { id: 'overlay-1', name: '오버레이 1', kind: 'overlay', clips: [], muted: false, locked: false },

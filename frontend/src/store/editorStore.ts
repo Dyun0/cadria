@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { assertProject, changeSpeed, deleteClip, moveClip, projectDuration, rippleGap, splitClip, trimClip } from '../core/edit';
-import { createProject, DEFAULT_CROP, DEFAULT_TRANSFORM, type Clip, type Media, type ProjectV1 } from '../core/types';
+import { createProject, DEFAULT_CROP, DEFAULT_TRANSFORM, safeUUID, type Clip, type Media, type ProjectV1 } from '../core/types';
 
 const STORAGE_KEY = 'cadria.project';
 const MAX_HISTORY = 80;
@@ -123,7 +123,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const next = structuredClone(get().project);
     const count = next.tracks.filter((t) => t.kind === kind).length + 1;
     const name = kind === 'video' ? `비디오 ${count}` : kind === 'overlay' ? `오버레이 ${count}` : `오디오 ${count}`;
-    const id = `${kind}-${crypto.randomUUID().slice(0, 6)}`;
+    const id = `${kind}-${safeUUID().slice(0, 6)}`;
     const newTrack = { id, name, kind, clips: [], muted: false, locked: false };
 
     if (kind === 'overlay') {
@@ -171,7 +171,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const dur = (foundClip.sourceEnd - foundClip.sourceStart) / foundClip.speed;
     const newClip: Clip = {
       ...structuredClone(foundClip),
-      id: crypto.randomUUID(),
+      id: safeUUID(),
       timelineStart: foundClip.timelineStart + dur + 0.1,
     };
     const next = structuredClone(project);
@@ -190,7 +190,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const clipEndTimes = targetTrack.clips.map((clip) => clip.timelineStart + (clip.sourceEnd - clip.sourceStart) / clip.speed);
     const start = clipEndTimes.length === 0 ? 0 : Math.max(0, ...clipEndTimes);
     const clip: Clip = {
-      id: crypto.randomUUID(), mediaId, sourceStart: 0, sourceEnd: media.duration, timelineStart: start, speed: 1,
+      id: safeUUID(), mediaId, sourceStart: 0, sourceEnd: media.duration, timelineStart: start, speed: 1,
       crop: { ...DEFAULT_CROP }, transform: targetTrack.kind === 'overlay' ? { ...DEFAULT_TRANSFORM, x: .2, y: .2, width: .6, height: .6 } : { ...DEFAULT_TRANSFORM },
       audio: { enabled: targetTrack.kind !== 'overlay' && media.hasAudio, volume: 1 },
     };
@@ -204,7 +204,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         next.tracks.push(audioTrack);
       }
       const audioClip: Clip = {
-        id: crypto.randomUUID(), mediaId, sourceStart: 0, sourceEnd: media.duration, timelineStart: start, speed: 1,
+        id: safeUUID(), mediaId, sourceStart: 0, sourceEnd: media.duration, timelineStart: start, speed: 1,
         crop: { ...DEFAULT_CROP }, transform: { ...DEFAULT_TRANSFORM },
         audio: { enabled: true, volume: 1 },
       };
@@ -257,7 +257,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const clipEndTimes = targetTrack.clips.map((clip) => clip.timelineStart + (clip.sourceEnd - clip.sourceStart) / clip.speed);
     const start = clipEndTimes.length === 0 ? playhead : Math.max(playhead, ...clipEndTimes);
     const clip: Clip = {
-      id: crypto.randomUUID(), mediaId, sourceStart: 0, sourceEnd: media.duration, timelineStart: start, speed: 1,
+      id: safeUUID(), mediaId, sourceStart: 0, sourceEnd: media.duration, timelineStart: start, speed: 1,
       crop: { ...DEFAULT_CROP }, transform: { ...DEFAULT_TRANSFORM, x: .2, y: .2, width: .6, height: .6 },
       audio: { enabled: media.hasAudio, volume: 1 },
     };
@@ -284,7 +284,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const clipEndTimes = track.clips.map((clip) => clip.timelineStart + (clip.sourceEnd - clip.sourceStart) / clip.speed);
     const start = clipEndTimes.length === 0 ? 0 : Math.max(0, ...clipEndTimes);
     const clip: Clip = {
-      id: crypto.randomUUID(), mediaId, sourceStart: 0, sourceEnd: media.duration, timelineStart: start, speed: 1,
+      id: safeUUID(), mediaId, sourceStart: 0, sourceEnd: media.duration, timelineStart: start, speed: 1,
       crop: { ...DEFAULT_CROP }, transform: { ...DEFAULT_TRANSFORM },
       audio: { enabled: true, volume: 1 },
     };
@@ -353,7 +353,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     const newClip: Clip = {
       ...structuredClone(copiedClip),
-      id: crypto.randomUUID(),
+      id: safeUUID(),
       timelineStart: playhead,
       transform: { ...copiedClip.transform, x: Math.min(0.6, copiedClip.transform.x + 0.05), y: Math.min(0.6, copiedClip.transform.y + 0.05) },
     };

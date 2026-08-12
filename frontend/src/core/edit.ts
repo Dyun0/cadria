@@ -1,4 +1,4 @@
-import type { Clip, ProjectV1, Track } from './types';
+import { safeUUID, type Clip, type ProjectV1, type Track } from './types';
 
 const clone = <T,>(value: T): T => structuredClone(value);
 export const snapFrame = (seconds: number, fps: number) => Math.round(seconds * fps) / fps;
@@ -36,7 +36,7 @@ export function splitClip(project: ProjectV1, clipId: string, at: number): Proje
     if (local <= 0 || local >= clipDuration(clip)) return;
     const source = snapFrame(clip.sourceStart + local * clip.speed, project.export.fps);
     const index = track.clips.findIndex((item) => item.id === clip.id);
-    const right: Clip = { ...clone(clip), id: crypto.randomUUID(), sourceStart: source, timelineStart: time };
+    const right: Clip = { ...clone(clip), id: safeUUID(), sourceStart: source, timelineStart: time };
     clip.sourceEnd = source;
     track.clips.splice(index + 1, 0, right);
   });
