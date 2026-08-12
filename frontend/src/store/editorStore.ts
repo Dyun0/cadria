@@ -58,9 +58,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   commit: (project) => {
     if (project === get().project) return;
     project = { ...project, updatedAt: new Date().toISOString() };
-    // 트랙 순서 항상 강제: video → overlay → audio
-    const ORDER: Record<string, number> = { video: 0, overlay: 1, audio: 2 };
-    project = { ...project, tracks: [...project.tracks].sort((a, b) => (ORDER[a.kind] ?? 1) - (ORDER[b.kind] ?? 1)) };
+    // 오디오 트랙만 항상 하단에 위치하도록 보정 (비디오/오버레이 트랙 간의 상대 순서는 보존)
+    const visual = project.tracks.filter(t => t.kind !== 'audio');
+    const audio = project.tracks.filter(t => t.kind === 'audio');
+    project = { ...project, tracks: [...visual, ...audio] };
     assertProject(project);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
     set((state) => ({
@@ -388,33 +389,83 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   reorderLayer: (clipId, direction) => {
     const { project } = get();
     const next = structuredClone(project);
-    let clipTrackIdx = -1;
-    next.tracks.forEach((t, idx) => {
-      if (t.clips.some((c) => c.id === clipId)) clipTrackIdx = idx;
-    });
+    let srcTrackIdx = -1;
+    let targetClip: Clip | undefined;
 
-    if (clipTrackIdx < 0) return;
-
-    if (direction === 'front') {
-      const audioIdx = next.tracks.findIndex((t) => t.kind === 'audio');
-      const targetPos = audioIdx >= 0 ? Math.max(0, audioIdx - 1) : next.tracks.length - 1;
-      const [moved] = next.tracks.splice(clipTrackIdx, 1);
-      next.tracks.splice(targetPos, 0, moved);
-    } else if (direction === 'back') {
-      const videoIdx = next.tracks.findIndex((t) => t.kind === 'video');
-      const targetPos = Math.max(0, videoIdx);
-      const [moved] = next.tracks.splice(clipTrackIdx, 1);
-      next.tracks.splice(targetPos, 0, moved);
-    } else if (direction === 'forward' && clipTrackIdx < next.tracks.length - 1) {
-      const [moved] = next.tracks.splice(clipTrackIdx, 1);
-      next.tracks.splice(clipTrackIdx + 1, 0, moved);
-    } else if (direction === 'backward' && clipTrackIdx > 0) {
-      const [moved] = next.tracks.splice(clipTrackIdx, 1);
-      next.tracks.splice(clipTrackIdx - 1, 0, moved);
+    for (let i = 0; i < next.tracks.length; i++) {
+      const c = next.tracks[i].clips.find((clip) => clip.id === clipId);
+      if (c) {
+        srcTrackIdx = i;
+        targetClip = c;
+        break;
+      }
     }
 
-    get().commit(next);
-    set({ notice: { kind: 'success', message: '레이어 순서가 변경되었습니다' } });
+    if (srcTrackIdx < 0 || !targetClip) return;
+
+    const visualTrackIndices = next.tracks
+      .map((t, idx) => (t.kind !== 'audio' ? idx : -1))
+      .filter((idx) => idx >= 0);
+
+    const currentVisualPos = visualTrackIndices.indexOf(srcTrackIdx);
+    if (currentVisualPos < 0) return;
+
+    let targetTrackIdx = srcTrackIdx;
+
+    if (direction === 'front') {
+      const topVisualIdx = visualTrackIndices[visualTrackIndices.length - 1];
+      if (srcTrackIdx === topVisualIdx) {
+        const count = next.tracks.filter((t) => t.kind === 'overlay').length + 1;
+        const newTrack = {
+          id: `overlay-${Date.now()}`,
+          name: `오버레이 ${count}`,
+          kind: 'overlay' as const,
+          clips: [],
+          muted: false,
+          locked: false,
+        };
+        const audioStartIdx = next.tracks.findIndex((t) => t.kind === 'audio');
+        const insertIdx = audioStartIdx >= 0 ? audioStartIdx : next.tracks.length;
+        next.tracks.splice(insertIdx, 0, newTrack);
+        targetTrackIdx = insertIdx;
+      } else {
+        targetTrackIdx = topVisualIdx;
+      }
+    } else if (direction === 'back') {
+      targetTrackIdx = visualTrackIndices[0];
+    } else if (direction === 'forward') {
+      if (currentVisualPos < visualTrackIndices.length - 1) {
+        targetTrackIdx = visualTrackIndices[currentVisualPos + 1];
+      } else {
+        const count = next.tracks.filter((t) => t.kind === 'overlay').length + 1;
+        const newTrack = {
+          id: `overlay-${Date.now()}`,
+          name: `오버레이 ${count}`,
+          kind: 'overlay' as const,
+          clips: [],
+          muted: false,
+          locked: false,
+        };
+        const audioStartIdx = next.tracks.findIndex((t) => t.kind === 'audio');
+        const insertIdx = audioStartIdx >= 0 ? audioStartIdx : next.tracks.length;
+        next.tracks.splice(insertIdx, 0, newTrack);
+        targetTrackIdx = insertIdx;
+      }
+    } else if (direction === 'backward') {
+      if (currentVisualPos > 0) {
+        targetTrackIdx = visualTrackIndices[currentVisualPos - 1];
+      }
+    }
+
+    if (targetTrackIdx !== srcTrackIdx) {
+      next.tracks[srcTrackIdx].clips = next.tracks[srcTrackIdx].clips.filter((c) => c.id !== clipId);
+      next.tracks[targetTrackIdx].clips.push(targetClip);
+      get().commit(next);
+      set({
+        selectedTrackId: next.tracks[targetTrackIdx].id,
+        notice: { kind: 'success', message: '클립 레이어 위치가 변경되었습니다' },
+      });
+    }
   },
 }));
 
