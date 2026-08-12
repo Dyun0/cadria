@@ -1,0 +1,29 @@
+services:
+  cadria:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    container_name: cadria
+    init: true
+    user: "0:0"
+    ports:
+      - "3080:3001"
+    volumes:
+      - cadria-data:/app/data
+    environment:
+      PORT: 3001
+      DATA_DIR: /app/data
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-2147483648}
+      CORS_ORIGINS: "*"
+      FFMPEG_BIN: ffmpeg
+      FFPROBE_BIN: ffprobe
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  cadria-data:

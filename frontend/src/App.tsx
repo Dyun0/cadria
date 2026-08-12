@@ -30,7 +30,9 @@ function Topbar({ openExport, confirmNewProject }: { openExport: () => void; con
   const s = useEditorStore();
   return <header className="topbar">
     <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-      <div className="brand-logo"><Film style={{ color: '#06b6d4' }} /> Cadria Studio</div>
+      <div className="brand-logo" onClick={() => s.setShowSettingsModal(true)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }} title="설정 창 열기">
+        <Film style={{ color: '#06b6d4' }} /> Cadria Studio <span style={{ fontSize: '10px', background: 'rgba(6,182,212,0.15)', color: '#06b6d4', padding: '2px 6px', borderRadius: '4px', marginLeft: '2px' }}>설정</span>
+      </div>
       <div className="divider" style={{ height: '18px', borderLeft: '1px solid var(--line)', margin: '0 6px' }} />
       <button className="tool-button" title="새 프로젝트 시작" onClick={confirmNewProject}><FilePlus /> 새 프로젝트</button>
       <button className="icon-button" title="실행 취소 (Ctrl+Z)" disabled={!s.past.length} onClick={s.undo}><Undo2 /></button>
@@ -59,7 +61,7 @@ function MediaLibrary({ openContextMenu, confirmDelete, onSelectMedia }: { openC
     </div>
     <div className="media-list">{Object.values(s.project.media).map((m) => <div className="media-item" key={m.id} draggable onDragStart={(e) => e.dataTransfer.setData('text/plain', m.id)} onClick={() => onSelectMedia(m.id)} onContextMenu={(e) => openContextMenu(e, m.id)}>
       <div className="media-thumb">{m.thumbnailUrl ? <img src={m.thumbnailUrl} alt={m.name} /> : <Film />}</div>
-      <div className="media-copy"><strong>{m.name}</strong><small>{tc(m.duration, s.project.export.fps)}</small></div>
+      <div className="media-copy"><strong>{m.originalName || m.name}</strong><small>{tc(m.duration, s.project.export.fps)}</small></div>
       <div className="media-actions" style={{ marginLeft: 'auto', display: 'flex', gap: '3px' }}>
         <button className="icon-button add-media-btn" title="타임라인에 추가" onClick={(e) => { e.stopPropagation(); onSelectMedia(m.id); }}><Plus /></button>
         <button className="icon-button delete-media-btn" title="미디어 삭제" onClick={(e) => { e.stopPropagation(); confirmDelete(m.id); }}><Trash2 /></button>
@@ -183,6 +185,7 @@ function Stage({ openCanvasContextMenu }: { openCanvasContextMenu: (e: React.Mou
         {guideLine.y !== undefined && <div className="snap-guide-line horizontal" style={{ top: `${guideLine.y * 100}%` }} />}
 
         {s.project.tracks.map((track, trackIdx) => {
+          if (track.kind === 'audio') return null;
           return track.clips.map((clip) => {
             const media = clipMedia(s.project.media, clip); if (!media) return null;
             const active = s.playhead >= clip.timelineStart && s.playhead <= clip.timelineStart + clipDuration(clip);
@@ -472,29 +475,35 @@ function Inspector() {
       {s.project.background.type === 'gradient' && <Field label="두 번째 색"><input type="color" value={s.project.background.color2} onChange={(e) => updateProject((project) => { project.background.color2 = e.target.value; })} /></Field>}
       {s.project.background.type === 'blur' && <><Field label="흐림 소스"><select value={s.project.background.mediaId ?? ''} onChange={(e) => updateProject((project) => { project.background.mediaId = e.target.value || undefined; })}><option value="">선택</option>{Object.values(s.project.media).map((media) => <option key={media.id} value={media.id}>{media.name}</option>)}</select></Field>
         <Field label={`흐림 ${s.project.background.blur}px`}><input type="range" min="4" max="48" value={s.project.background.blur} onChange={(e) => updateProject((project) => { project.background.blur = Number(e.target.value); })} /></Field></>}
-    </Section><p className="empty" style={{ padding: '16px', color: 'var(--muted)' }}>클립을 선택하면 편집할 수 있습니다.</p></> :
+    </Section><p className="empty" style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: '11px', whiteSpace: 'nowrap', margin: 0 }}>클립을 선택하면 편집할 수 있습니다.</p></> :
       isAudioTrack ? <>
         <Section title="음량 조절">
-          <label className="switch-row" style={{ marginBottom: '12px' }}>
-            <span>{clip.audio.enabled ? <Volume2 /> : <VolumeX />} 오디오 출력 활성화</span>
+          <label className="switch-row" style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '11.5px', fontWeight: '500' }}>
+              {clip.audio.enabled ? <Volume2 style={{ width: 16, height: 16, flexShrink: 0 }} /> : <VolumeX style={{ width: 16, height: 16, flexShrink: 0 }} />} 오디오 출력 활성화
+            </span>
             <input type="checkbox" checked={clip.audio.enabled} onChange={e => s.updateClip(clip.id, { audio: { ...clip.audio, enabled: e.target.checked } })} />
           </label>
           <Field label={`볼륨 크기 (${Math.round(clip.audio.volume * 100)}%)`}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input disabled={!clip.audio.enabled} type="range" min="0" max="2" step=".01" value={clip.audio.volume} onChange={e => s.updateClip(clip.id, { audio: { ...clip.audio, volume: Number(e.target.value) } })} style={{ flex: 1 }} />
-              <input disabled={!clip.audio.enabled} type="number" min="0" max="200" style={{ width: '56px', textAlign: 'center' }} value={Math.round(clip.audio.volume * 100)} onChange={e => s.updateClip(clip.id, { audio: { ...clip.audio, volume: Math.max(0, Math.min(200, Number(e.target.value))) / 100 } })} />
-              <span style={{ fontSize: '12px', fontWeight: 'bold' }}>%</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                <input disabled={!clip.audio.enabled} type="number" min="0" max="200" style={{ width: '54px', textAlign: 'center', padding: '3px 4px', fontSize: '11.5px', borderRadius: '4px' }} value={Math.round(clip.audio.volume * 100)} onChange={e => s.updateClip(clip.id, { audio: { ...clip.audio, volume: Math.max(0, Math.min(200, Number(e.target.value))) / 100 } })} />
+                <span style={{ fontSize: '11.5px', fontWeight: '600', color: 'var(--muted)' }}>%</span>
+              </div>
             </div>
           </Field>
         </Section>
         <Section title="오디오 속도">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <input type="range" min="0.25" max="4.0" step="0.05" value={clip.speed} onChange={e => s.speed(clip.id, Number(e.target.value))} style={{ flex: 1 }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-              <input type="number" min="0.25" max="4.0" step="0.1" style={{ width: '56px', textAlign: 'center' }} value={clip.speed} onChange={e => s.speed(clip.id, Math.max(0.1, Number(e.target.value)))} />
-              <span style={{ fontSize: '12px', fontWeight: 'bold' }}>×</span>
+          <Field label={`재생 속도 (${clip.speed}×)`}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input type="range" min="0.25" max="4.0" step="0.05" value={clip.speed} onChange={e => s.speed(clip.id, Number(e.target.value))} style={{ flex: 1 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                <input type="number" min="0.25" max="4.0" step="0.1" style={{ width: '54px', textAlign: 'center', padding: '3px 4px', fontSize: '11.5px', borderRadius: '4px' }} value={clip.speed} onChange={e => s.speed(clip.id, Math.max(0.1, Number(e.target.value)))} />
+                <span style={{ fontSize: '11.5px', fontWeight: '600', color: 'var(--muted)' }}>×</span>
+              </div>
             </div>
-          </div>
+          </Field>
         </Section>
       </> :
         <><Section title="변형">
@@ -662,12 +671,17 @@ function Timeline({ openContextMenu, openTrackContextMenu }: { openContextMenu: 
       <div className="timeline-content" style={{ width }}>
         <div className="ruler">{ticks.map(t => <span key={t} style={{ left: t * s.zoom }}>{s.zoom < 10 ? `${Math.floor(t / 60)}분` : tc(t, s.project.export.fps).slice(3, 8)}</span>)}</div>
         {snapIndicator !== null && <div className="timeline-snap-indicator" style={{ left: snapIndicator * s.zoom }} />}
-        {s.project.tracks.map(track => <div className="track-lane" key={track.id} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const mediaId = e.dataTransfer.getData('text/plain'); if (mediaId) s.addClip(mediaId, track.id); }}>{track.clips.map(clip => <div key={clip.id} className={`timeline-clip ${track.kind} ${s.selectedClipId === clip.id ? 'selected' : ''}`} style={{ left: clip.timelineStart * s.zoom, width: Math.max(8, clipDuration(clip) * s.zoom) }} onPointerDown={e => drag(e, clip, track.id)} onDoubleClick={(e) => { e.stopPropagation(); useEditorStore.setState({ playhead: clip.timelineStart, selectedClipId: clip.id, playing: false }); }} onContextMenu={(e) => { e.stopPropagation(); openContextMenu(e, clip.id); }}>
-          <button className="trim-handle left" aria-label="시작 트림" onPointerDown={e => trim(e, clip, 'start')} /><span>{clipMedia(s.project.media, clip)?.name ?? '클립'}</span><button className="trim-handle right" aria-label="끝 트림" onPointerDown={e => trim(e, clip, 'end')} />
-        </div>)}</div>)}
+        {s.project.tracks.map(track => <div className="track-lane" key={track.id} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const mediaId = e.dataTransfer.getData('text/plain'); if (mediaId) s.addClip(mediaId, track.id); }}>{track.clips.map(clip => {
+          const m = clipMedia(s.project.media, clip);
+          const filename = m?.originalName || m?.name || '파일';
+          const clipLabel = `${track.kind === 'audio' ? '오디오' : '비디오'} - ${filename}`;
+          return <div key={clip.id} className={`timeline-clip ${track.kind} ${s.selectedClipId === clip.id ? 'selected' : ''}`} style={{ left: clip.timelineStart * s.zoom, width: Math.max(8, clipDuration(clip) * s.zoom) }} onPointerDown={e => drag(e, clip, track.id)} onDoubleClick={(e) => { e.stopPropagation(); useEditorStore.setState({ playhead: clip.timelineStart, selectedClipId: clip.id, playing: false }); }} onContextMenu={(e) => { e.stopPropagation(); openContextMenu(e, clip.id); }}>
+            <button className="trim-handle left" aria-label="시작 트림" onPointerDown={e => trim(e, clip, 'start')} /><span>{clipLabel}</span><button className="trim-handle right" aria-label="끝 트림" onPointerDown={e => trim(e, clip, 'end')} />
+          </div>;
+        })}</div>)}
         <div className="playhead" style={{ left: s.playhead * s.zoom }} />
       </div></div>
-      <div className="track-gutter">{s.project.tracks.map(track => <button key={track.id} className={s.selectedTrackId === track.id ? 'selected' : ''} onClick={() => useEditorStore.setState({ selectedTrackId: track.id })} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); openTrackContextMenu(e, track.id); }}><Film /><span>{track.name}</span>{track.locked && <Lock />}</button>)}</div>
+      <div className="track-gutter">{s.project.tracks.map(track => <button key={track.id} className={s.selectedTrackId === track.id ? 'selected' : ''} onClick={() => useEditorStore.setState({ selectedTrackId: track.id })} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); openTrackContextMenu(e, track.id); }}>{track.kind === 'audio' ? <Volume2 /> : <Film />}<span>{track.name}</span>{track.locked && <Lock />}</button>)}</div>
     </div>
   </section>;
 }
@@ -837,10 +851,10 @@ function ExportModal({ close }: { close: () => void }) {
       </div>
       {!job ? <div className="export-form" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '2px' }}>
         <Field label="출력 파일 이름">
-          <input type="text" value={exportName} onChange={e => setExportName(e.target.value)} placeholder="내_비디오_프로젝트" style={{ width: '100%', padding: '7px 10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--line)', borderRadius: '6px', color: 'var(--text)', fontSize: '12.5px' }} />
+          <input type="text" value={exportName} onChange={e => setExportName(e.target.value)} placeholder="내_비디오_프로젝트" style={{ width: '100%', padding: '7px 10px', background: 'var(--input-bg)', border: '1px solid var(--line)', borderRadius: '6px', color: 'var(--text)', fontSize: '12.5px' }} />
         </Field>
         <Field label="비디오 화질 품질">
-          <select value={quality} onChange={e => setQuality(e.target.value as ExportSettings['quality'])} style={{ width: '100%', padding: '7px 10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--line)', borderRadius: '6px', color: 'var(--text)', fontSize: '12.5px' }}>
+          <select value={quality} onChange={e => setQuality(e.target.value as ExportSettings['quality'])} style={{ width: '100%', padding: '7px 10px', background: 'var(--input-bg)', border: '1px solid var(--line)', borderRadius: '6px', color: 'var(--text)', fontSize: '12.5px' }}>
             <option value="draft">표준 화질 (Standard MP4)</option>
             <option value="standard">고화질 (High Quality HD)</option>
             <option value="high">최고 화질 (Pro Ultra HD)</option>
@@ -852,10 +866,10 @@ function ExportModal({ close }: { close: () => void }) {
       </div> :
       <div className={`export-status ${job.status}`} style={{ textAlign: 'center', padding: '6px 0' }}>
         <div className="status-icon" style={{ margin: '0 auto 6px' }}>{job.status === 'complete' ? <Download /> : job.status === 'error' ? <X /> : <LoaderCircle className={terminal(job.status) ? '' : 'spin'} />}</div>
-        <h3 style={{ margin: '0 0 4px', fontSize: '13.5px' }}>{job.status === 'complete' ? '내보내기 성공!' : job.status === 'error' ? '내보내기 실패' : '비디오 렌더링 중...'}</h3>
-        {job.error && <p style={{ color: '#ef4444', fontSize: '11.5px' }}>{job.error}</p>}
+        <h3 style={{ margin: '0 0 4px', fontSize: '13.5px', color: 'var(--text)' }}>{job.status === 'complete' ? '내보내기 성공!' : job.status === 'error' ? '내보내기 실패' : '비디오 렌더링 중...'}</h3>
+        {job.error && <p style={{ color: 'var(--danger)', fontSize: '11.5px' }}>{job.error}</p>}
         <progress max="100" value={job.progress} style={{ width: '100%', height: '6px', margin: '6px 0' }} />
-        <span style={{ fontSize: '12.5px', fontWeight: 'bold' }}>{Math.round(job.progress)}%</span>
+        <span style={{ fontSize: '12.5px', fontWeight: 'bold', color: 'var(--text)' }}>{Math.round(job.progress)}%</span>
         {job.status === 'complete' ? <a className="primary wide" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px', marginTop: '8px' }} href={job.downloadUrl || api.downloadUrl(job.id)} download><Download style={{ width: 13 }} /> MP4 다운로드</a> : !terminal(job.status) && <button className="secondary wide" style={{ marginTop: '8px' }} onClick={() => void api.cancelExport(job.id)}><X /> 렌더링 취소</button>}
       </div>}
     </div>
@@ -885,19 +899,20 @@ function MediaContextMenu({ x, y, mediaId, close, confirmDelete }: { x: number; 
 function ConfirmDeleteModal({ mediaId, close }: { mediaId: string; close: () => void }) {
   const s = useEditorStore();
   const media = s.project.media[mediaId];
+  const filename = media?.originalName || media?.name || '미디어';
   return <div className="modal-backdrop" role="presentation" onPointerDown={e => e.target === e.currentTarget && close()}>
     <div className="modal">
       <div className="modal-header">
-        <h2 style={{ color: '#ef4444', margin: 0, padding: 0, fontSize: '16px' }}>미디어 삭제 확인</h2>
+        <h2 style={{ color: 'var(--danger)', margin: 0, padding: 0, fontSize: '16px' }}>미디어 삭제 확인</h2>
       </div>
-      <p style={{ margin: '4px 0 0 0', padding: 0 }}>
-        <strong style={{ color: '#fff', fontSize: '13.5px' }}>[{media?.name ?? '미디어'}]</strong>를 라이브러리에서 삭제하시겠습니까?<br />
-        <small style={{ color: 'rgba(255,255,255,0.45)', display: 'block', marginTop: '4px', fontSize: '11.5px' }}>
+      <p style={{ margin: '4px 0 0 0', padding: 0, color: 'var(--text)' }}>
+        <strong style={{ color: 'var(--text)', fontSize: '13.5px' }}>[{filename}]</strong>를 라이브러리에서 삭제하시겠습니까?<br />
+        <small style={{ color: 'var(--muted)', display: 'block', marginTop: '4px', fontSize: '11.5px' }}>
           타임라인의 모든 연관 클립도 함께 삭제됩니다.
         </small>
       </p>
-      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '6px' }}>
-        <button className="secondary" style={{ padding: '7px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }} onClick={close}>
+      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
+        <button className="tool-button" style={{ padding: '7px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600' }} onClick={close}>
           취소
         </button>
         <button className="tool-button danger" style={{ padding: '7px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: '700', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', color: '#fff' }} onClick={() => { s.deleteMedia(mediaId); close(); }}>
@@ -912,11 +927,11 @@ function ConfirmNewProjectModal({ close, confirm }: { close: () => void; confirm
   return <div className="modal-backdrop" role="presentation" onPointerDown={e => e.target === e.currentTarget && close()}>
     <div className="modal">
       <div className="modal-header">
-        <h2 style={{ color: '#06b6d4', margin: 0, padding: 0, fontSize: '16px' }}>새 프로젝트 시작</h2>
+        <h2 style={{ color: 'var(--accent-cyan)', margin: 0, padding: 0, fontSize: '16px' }}>새 프로젝트 시작</h2>
       </div>
-      <p style={{ margin: '4px 0 0 0', padding: 0 }}>
+      <p style={{ margin: '4px 0 0 0', padding: 0, color: 'var(--text)' }}>
         새 프로젝트를 시작하시겠습니까?<br />
-        <strong style={{ color: '#ef4444', display: 'block', marginTop: '4px', fontSize: '12px' }}>
+        <strong style={{ color: 'var(--danger)', display: 'block', marginTop: '4px', fontSize: '12px' }}>
           ⚠️ 현재 프로젝트의 모든 편집 내역이 초기화됩니다.
         </strong>
       </p>
@@ -932,9 +947,9 @@ function ConfirmNewProjectModal({ close, confirm }: { close: () => void; confirm
   </div>;
 }
 
-
 export default function App() {
-  const [exportOpen, setExportOpen] = useState(false); const notice = useEditorStore(s => s.notice);
+  const s = useEditorStore();
+  const [exportOpen, setExportOpen] = useState(false); const notice = s.notice;
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; clipId?: string }>({ visible: false, x: 0, y: 0 });
   const [canvasContextMenu, setCanvasContextMenu] = useState<{ visible: boolean; x: number; y: number; clipId?: string }>({ visible: false, x: 0, y: 0 });
   const [mediaContextMenu, setMediaContextMenu] = useState<{ visible: boolean; x: number; y: number; mediaId?: string }>({ visible: false, x: 0, y: 0 });
@@ -952,8 +967,13 @@ export default function App() {
   }, [notice]);
 
   useEffect(() => {
+    document.body.className = s.theme === 'light' ? 'light-theme' : 'dark-theme';
+    document.body.setAttribute('data-theme', s.theme);
+  }, [s.theme]);
+
+  useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      const target = e.target; if (target instanceof HTMLElement && target.matches('input,select,textarea,[contenteditable=\"true\"]')) return; const modifier = e.ctrlKey || e.metaKey; if (e.code === 'Space') { e.preventDefault(); useEditorStore.setState(s => ({ playing: !s.playing })) } else if (modifier && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? useEditorStore.getState().redo() : useEditorStore.getState().undo() } else if (modifier && e.key.toLowerCase() === 'y') { e.preventDefault(); useEditorStore.getState().redo() } else if (modifier && e.key.toLowerCase() === 'c') { e.preventDefault(); useEditorStore.getState().copyClip() } else if (modifier && e.key.toLowerCase() === 'v') { e.preventDefault(); useEditorStore.getState().pasteClip() } else if (e.key.toLowerCase() === 's') { useEditorStore.getState().split() } else if (e.key.toLowerCase() === 'g') { useEditorStore.getState().ripple() } else if (e.key === 'Delete' || e.key === 'Backspace') useEditorStore.getState().remove()
+      const target = e.target; if (target instanceof HTMLElement && target.matches('input,select,textarea,[contenteditable="true"]')) return; const modifier = e.ctrlKey || e.metaKey; if (e.code === 'Space') { e.preventDefault(); useEditorStore.setState(s => ({ playing: !s.playing })) } else if (modifier && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? useEditorStore.getState().redo() : useEditorStore.getState().undo() } else if (modifier && e.key.toLowerCase() === 'y') { e.preventDefault(); useEditorStore.getState().redo() } else if (modifier && e.key.toLowerCase() === 'c') { e.preventDefault(); useEditorStore.getState().copyClip() } else if (modifier && e.key.toLowerCase() === 'v') { e.preventDefault(); useEditorStore.getState().pasteClip() } else if (e.key.toLowerCase() === 's') { useEditorStore.getState().split() } else if (e.key.toLowerCase() === 'g') { useEditorStore.getState().ripple() } else if (e.key === 'Delete' || e.key === 'Backspace') useEditorStore.getState().remove()
     }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key)
   }, []);
 
@@ -989,6 +1009,7 @@ export default function App() {
     <Timeline openContextMenu={openContextMenu} openTrackContextMenu={openTrackContextMenu} />
     {notice && <button role="alert" aria-live="assertive" className={`toast ${notice.kind}`} onClick={() => useEditorStore.setState({ notice: undefined })}>{notice.message}</button>}
     {exportOpen && <ExportModal close={() => setExportOpen(false)} />}
+    {s.showSettingsModal && <SettingsModal close={() => s.setShowSettingsModal(false)} />}
     {contextMenu.visible && <ContextMenu x={contextMenu.x} y={contextMenu.y} clipId={contextMenu.clipId} close={() => setContextMenu({ visible: false, x: 0, y: 0 })} />}
     {canvasContextMenu.visible && canvasContextMenu.clipId && <CanvasContextMenu x={canvasContextMenu.x} y={canvasContextMenu.y} clipId={canvasContextMenu.clipId} close={() => setCanvasContextMenu({ visible: false, x: 0, y: 0 })} />}
     {mediaContextMenu.visible && mediaContextMenu.mediaId && <MediaContextMenu x={mediaContextMenu.x} y={mediaContextMenu.y} mediaId={mediaContextMenu.mediaId} close={() => setMediaContextMenu({ visible: false, x: 0, y: 0 })} confirmDelete={(id) => setConfirmDeleteMediaId(id)} />}
@@ -996,5 +1017,42 @@ export default function App() {
     {confirmDeleteMediaId && <ConfirmDeleteModal mediaId={confirmDeleteMediaId} close={() => setConfirmDeleteMediaId(null)} />}
     {selectTrackMediaId && <SelectTrackModal mediaId={selectTrackMediaId} close={() => setSelectTrackMediaId(null)} />}
     {showConfirmNewProject && <ConfirmNewProjectModal close={() => setShowConfirmNewProject(false)} confirm={() => useEditorStore.getState().newProject()} />}
+  </div>;
+}
+
+function SettingsModal({ close }: { close: () => void }) {
+  const s = useEditorStore();
+  return <div className="modal-backdrop" role="presentation" onPointerDown={e => e.target === e.currentTarget && close()}>
+    <div className="modal" style={{ width: '360px' }}>
+      <div className="modal-header">
+        <div><h2>설정</h2></div>
+        <button className="icon-button" onClick={close}><X /></button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', margin: '16px 0' }}>
+        <div>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>화면 테마</label>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 10px', lineHeight: '1.4' }}>Cadria Studio의 UI 색상 테마를 선택합니다.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <button
+              className={`tool-button ${s.theme === 'dark' ? 'selected' : ''}`}
+              style={{ justifyContent: 'center', height: '38px', fontWeight: 600, background: s.theme === 'dark' ? '#06b6d4' : 'var(--panel-bg)', color: s.theme === 'dark' ? '#fff' : 'var(--text)', border: '1px solid var(--line)' }}
+              onClick={() => s.setTheme('dark')}
+            >
+              🌙 다크 모드
+            </button>
+            <button
+              className={`tool-button ${s.theme === 'light' ? 'selected' : ''}`}
+              style={{ justifyContent: 'center', height: '38px', fontWeight: 600, background: s.theme === 'light' ? '#06b6d4' : 'var(--panel-bg)', color: s.theme === 'light' ? '#fff' : 'var(--text)', border: '1px solid var(--line)' }}
+              onClick={() => s.setTheme('light')}
+            >
+              ☀️ 화이트 모드
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="modal-actions" style={{ justifyContent: 'flex-end', marginTop: '20px' }}>
+        <button className="export-button" onClick={close}>확인</button>
+      </div>
+    </div>
   </div>;
 }

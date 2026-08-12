@@ -36,7 +36,9 @@ const normalizeJob = (data: Record<string, unknown>): ExportJob => {
 };
 
 const normalizeMedia = (data: Record<string, unknown>): Media => ({
-  id: String(data.id ?? data.fileId), name: String(data.name ?? data.originalName ?? '미디어'),
+  id: String(data.id ?? data.fileId ?? data.media_id),
+  name: String(data.original_name ?? data.originalName ?? data.name ?? '미디어'),
+  originalName: String(data.original_name ?? data.originalName ?? data.name ?? '미디어'),
   url: String(data.url), duration: Number(data.duration), width: Number(data.width ?? 1920),
   height: Number(data.height ?? 1080), mimeType: String(data.mimeType ?? 'video/mp4'),
   hasAudio: data.hasAudio !== false,

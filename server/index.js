@@ -164,10 +164,10 @@ if (fs.existsSync(settings.frontendDist)) {
   });
 }
 
-function startServer(port = 39017) {
+function startServer(port = process.env.PORT || 39017, host = process.env.HOST || '0.0.0.0') {
   return new Promise((resolve, reject) => {
-    const server = app.listen(port, '127.0.0.1', () => {
-      console.log(`🚀 Cadria Node.js Backend running at http://127.0.0.1:${port}`);
+    const server = app.listen(port, host, () => {
+      console.log(`🚀 Cadria Node.js Backend running at http://${host}:${port}`);
       resolve(server);
     });
     server.on('error', reject);

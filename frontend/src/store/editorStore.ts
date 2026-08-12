@@ -30,6 +30,8 @@ interface EditorState {
   project: ProjectV1; past: ProjectV1[]; future: ProjectV1[]; selectedClipId?: string;
   selectedTrackId: string; playhead: number; playing: boolean; zoom: number; timelineHeight: number;
   cropMode: boolean; copiedClip: Clip | null; notice?: { kind: 'error' | 'success'; message: string };
+  theme: 'dark' | 'light'; showSettingsModal: boolean;
+  setTheme: (theme: 'dark' | 'light') => void; setShowSettingsModal: (show: boolean) => void;
   commit: (project: ProjectV1) => void; undo: () => void; redo: () => void;
   newProject: () => void;
   addMedia: (media: Media) => void; deleteMedia: (mediaId: string) => void; addClip: (mediaId: string, trackId?: string) => void;
@@ -42,9 +44,17 @@ interface EditorState {
   reorderLayer: (clipId: string, direction: 'front' | 'forward' | 'backward' | 'back') => void;
 }
 
+const savedTheme = (localStorage.getItem('cadria.theme') as 'dark' | 'light') || 'dark';
+
 export const useEditorStore = create<EditorState>((set, get) => ({
   project: loadProject(), past: [], future: [], selectedTrackId: 'video-1',
   playhead: 0, playing: false, zoom: 80, timelineHeight: 248, cropMode: false, copiedClip: null,
+  theme: savedTheme, showSettingsModal: false,
+  setTheme: (theme) => {
+    localStorage.setItem('cadria.theme', theme);
+    set({ theme });
+  },
+  setShowSettingsModal: (showSettingsModal) => set({ showSettingsModal }),
   commit: (project) => {
     if (project === get().project) return;
     project = { ...project, updatedAt: new Date().toISOString() };
@@ -93,7 +103,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     return { project, past: [...state.past, state.project], future: state.future.slice(1) };
   }),
   addMedia: (media) => {
-    const project = structuredClone(get().project); project.media[media.id] = media; get().commit(project);
+    const next = structuredClone(get().project);
+    next.media[media.id] = media;
+    get().commit(next);
   },
   deleteMedia: (mediaId) => {
     const next = structuredClone(get().project);
@@ -107,7 +119,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   addTrack: (kind) => {
     const next = structuredClone(get().project);
     const count = next.tracks.filter((t) => t.kind === kind).length + 1;
-    const name = kind === 'video' ? `Video ${count}` : kind === 'overlay' ? `Overlay ${count}` : `Audio ${count}`;
+    const name = kind === 'video' ? `비디오 ${count}` : kind === 'overlay' ? `오버레이 ${count}` : `오디오 ${count}`;
     const id = `${kind}-${crypto.randomUUID().slice(0, 6)}`;
     const newTrack = { id, name, kind, clips: [], muted: false, locked: false };
 
@@ -263,7 +275,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const next = structuredClone(project);
     let track = next.tracks.find((t) => t.kind === 'audio');
     if (!track) {
-      track = { id: 'audio-1', name: '오디오 트랙', kind: 'audio', clips: [], muted: false, locked: false };
+      track = { id: 'audio-1', name: '오디오 1', kind: 'audio', clips: [], muted: false, locked: false };
       next.tracks.push(track);
     }
     const clipEndTimes = track.clips.map((clip) => clip.timelineStart + (clip.sourceEnd - clip.sourceStart) / clip.speed);

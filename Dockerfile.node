@@ -1,0 +1,42 @@
+# syntax=docker/dockerfile:1
+
+FROM node:20-bookworm-slim AS frontend-build
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+COPY frontend/ ./
+RUN npm run build
+
+FROM node:20-bookworm-slim AS runtime
+
+ENV PORT=3001 \
+    DATA_DIR=/app/data \
+    MAX_UPLOAD_BYTES=2147483648 \
+    CORS_ORIGINS=*
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends curl ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY server/package.json server/package-lock.json* ./server/
+RUN cd server && if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+COPY server/ ./server/
+COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+
+RUN groupadd --system cadria \
+  && useradd --system --gid cadria --home-dir /app --shell /usr/sbin/nologin cadria \
+  && mkdir -p /app/data/media /app/data/exports /app/data/thumbnails \
+  && chmod -R 777 /app/data \
+  && chown -R cadria:cadria /app
+
+EXPOSE 3001
+VOLUME ["/app/data"]
+
+USER cadria
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl --fail --silent http://127.0.0.1:3001/api/health || exit 1
+
+CMD ["node", "server/index.js"]

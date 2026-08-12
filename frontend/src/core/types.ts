@@ -8,7 +8,7 @@ export interface NormalizedTransform {
 export interface ClipAudio { enabled: boolean; volume: number }
 
 export interface Media {
-  id: ID; name: string; url: string; duration: number; width: number; height: number;
+  id: ID; name: string; originalName?: string; url: string; duration: number; width: number; height: number;
   mimeType: string; hasAudio: boolean; thumbnailUrl?: string; serverFilename?: string;
 }
 export interface Clip {
