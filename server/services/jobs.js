@@ -38,6 +38,7 @@ class JobManager {
 
     const job = {
       job_id: jobId,
+      project_name: project.name || 'exported_video',
       status: 'queued',
       progress: 0,
       duration: plan.duration,

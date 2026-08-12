@@ -919,7 +919,7 @@ function ExportModal({ close }: { close: () => void }) {
 
         <div style={{ marginTop: '4px' }}>
           {job.status === 'complete' ? (
-            <a className="primary wide" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '38px', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold' }} href={job.downloadUrl || api.downloadUrl(job.id)} download>
+            <a className="primary wide" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '38px', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold' }} href={job.downloadUrl || api.downloadUrl(job.id)} download={`${exportName.trim() || '내_비디오_프로젝트'}.mp4`}>
               <Download style={{ width: 15 }} /> MP4 비디오 다운로드
             </a>
           ) : !terminal(job.status) ? (

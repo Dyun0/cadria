@@ -149,7 +149,8 @@ app.get('/api/exports/:jobId/download', (req, res) => {
     if (job.status !== 'completed' || !fs.existsSync(job.outputPath)) {
       return res.status(409).json({ detail: 'Export is not completed' });
     }
-    res.download(job.outputPath, `export_${job.job_id}.mp4`);
+    const safeName = (job.project_name || 'exported_video').replace(/[\\/:*?"<>|]/g, '_');
+    res.download(job.outputPath, `${safeName}.mp4`);
   } catch (err) {
     res.status(404).json({ detail: err.message });
   }
