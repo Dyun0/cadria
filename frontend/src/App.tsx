@@ -417,7 +417,9 @@ function ClipRender({ clip, media, playhead, selected, zIndex, stageRef, setGuid
   };
   return <div className={`stage-clip ${selected ? 'selected' : ''}`} style={style} onPointerDown={handlePointerDown} onContextMenu={(e) => { e.stopPropagation(); openCanvasContextMenu(e, clip.id); }}>
     <div className="clip-video-box">
-      <video ref={video} src={media.url} muted={!clip.audio.enabled} />
+      {media.isImage
+        ? <img src={media.url} style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }} draggable={false} />
+        : <video ref={video} src={media.url} muted={!clip.audio.enabled} />}
     </div>
     {selected && <div className="transform-handles">
       {['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'].map((h) => <button key={h} aria-label={`${h} 크기 조절 핸들`} className={`transform-handle ${h}`} onPointerDown={(e) => beginTransform(e, h)} />)}

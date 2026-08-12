@@ -45,7 +45,8 @@ const normalizeMedia = (data: Record<string, unknown>): Media => ({
   originalName: String(data.original_name ?? data.originalName ?? data.name ?? '미디어'),
   url: String(data.url), duration: Number(data.duration), width: Number(data.width ?? 1920),
   height: Number(data.height ?? 1080), mimeType: String(data.mimeType ?? 'video/mp4'),
-  hasAudio: data.hasAudio !== false,
+  hasAudio: data.hasAudio !== false && !data.is_image,
+  isImage: Boolean(data.is_image),
   thumbnailUrl: data.thumbnailUrl || data.thumbnail_url ? String(data.thumbnailUrl ?? data.thumbnail_url) : undefined,
   serverFilename: data.filename ? String(data.filename) : undefined,
 });

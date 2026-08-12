@@ -9,7 +9,7 @@ export interface ClipAudio { enabled: boolean; volume: number }
 
 export interface Media {
   id: ID; name: string; originalName?: string; url: string; duration: number; width: number; height: number;
-  mimeType: string; hasAudio: boolean; thumbnailUrl?: string; serverFilename?: string;
+  mimeType: string; hasAudio: boolean; thumbnailUrl?: string; serverFilename?: string; isImage?: boolean;
 }
 export interface Clip {
   id: ID; mediaId: ID; sourceStart: number; sourceEnd: number; timelineStart: number;

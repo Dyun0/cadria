@@ -25,6 +25,8 @@ function parseFps(str) {
   return parseFloat(str) || 0;
 }
 
+const IMAGE_CODECS = new Set(['mjpeg', 'jpeg2000', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heif', 'heic']);
+
 async function probeMedia(ffprobeBin, mediaPath) {
   const { stdout } = await runCommand(ffprobeBin, [
     '-v', 'error',
@@ -49,6 +51,23 @@ async function probeMedia(ffprobeBin, mediaPath) {
     throw new Error('Uploaded file has no valid video stream');
   }
 
+  // 이미지 파일 판별 (duration/fps 없음)
+  const isImage = IMAGE_CODECS.has(video.codec_name) ||
+    video.nb_frames === '1' ||
+    (video.r_frame_rate === '25/1' && !data.format?.duration && video.codec_name !== 'h264');
+
+  if (isImage) {
+    return {
+      duration: 5,  // 기본 5초로 타임라인에 배치
+      width: parseInt(video.width, 10),
+      height: parseInt(video.height, 10),
+      fps: 1,
+      has_audio: false,
+      codec: video.codec_name || 'mjpeg',
+      is_image: true
+    };
+  }
+
   const duration = parseFloat(data.format?.duration || video.duration || 0);
   const fps = parseFps(video.avg_frame_rate || video.r_frame_rate);
 
@@ -62,21 +81,16 @@ async function probeMedia(ffprobeBin, mediaPath) {
     height: parseInt(video.height, 10),
     fps,
     has_audio: Boolean(audio),
-    codec: video.codec_name || 'h264'
+    codec: video.codec_name || 'h264',
+    is_image: false
   };
 }
 
-async function generateThumbnail(ffmpegBin, sourcePath, destPath, duration) {
-  const ss = Math.min(Math.max(duration * 0.1, 0), 5).toFixed(2);
-  await runCommand(ffmpegBin, [
-    '-v', 'error',
-    '-ss', String(ss),
-    '-i', sourcePath,
-    '-frames:v', '1',
-    '-vf', 'scale=480:-2',
-    '-y',
-    destPath
-  ], 120000);
+async function generateThumbnail(ffmpegBin, sourcePath, destPath, duration, isImage = false) {
+  const args = isImage
+    ? ['-v', 'error', '-i', sourcePath, '-frames:v', '1', '-vf', 'scale=480:-2', '-y', destPath]
+    : ['-v', 'error', '-ss', Math.min(Math.max(duration * 0.1, 0), 5).toFixed(2), '-i', sourcePath, '-frames:v', '1', '-vf', 'scale=480:-2', '-y', destPath];
+  await runCommand(ffmpegBin, args, 120000);
 }
 
 class MediaRegistry {
@@ -122,7 +136,7 @@ async function ingestUpload(file, settings, registry) {
   try {
     const probed = await probeMedia(settings.ffprobeBin, finalPath);
     const thumbnailPath = registry.getThumbnailPath(mediaId);
-    await generateThumbnail(settings.ffmpegBin, finalPath, thumbnailPath, probed.duration);
+    await generateThumbnail(settings.ffmpegBin, finalPath, thumbnailPath, probed.duration, probed.is_image);
 
     const metadata = {
       media_id: mediaId,
@@ -149,7 +163,8 @@ async function ingestUpload(file, settings, registry) {
       height: metadata.height,
       fps: metadata.fps,
       has_audio: metadata.has_audio,
-      codec: metadata.codec
+      codec: metadata.codec,
+      is_image: metadata.is_image || false
     };
   } catch (err) {
     if (fs.existsSync(finalPath)) fs.unlinkSync(finalPath);

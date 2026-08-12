@@ -59,6 +59,10 @@ function buildFfmpegPlan(project, resolvedMediaMap, outputPath) {
   const inputs = mediaIds.map(id => {
     const mediaObj = resolvedMediaMap[id];
     if (!mediaObj) throw new Error(`Missing media file for ID: ${id}`);
+    if (mediaObj.metadata?.is_image) {
+      // 이미지는 -loop 1로 무한 반복 후 타임라인 길이만큼 자름
+      return ['-loop', '1', '-framerate', '30', '-i', mediaObj.path];
+    }
     return ['-i', mediaObj.path];
   });
 

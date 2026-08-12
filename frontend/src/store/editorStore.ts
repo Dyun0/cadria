@@ -58,6 +58,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   commit: (project) => {
     if (project === get().project) return;
     project = { ...project, updatedAt: new Date().toISOString() };
+    // 트랙 순서 항상 강제: video → overlay → audio
+    const ORDER: Record<string, number> = { video: 0, overlay: 1, audio: 2 };
+    project = { ...project, tracks: [...project.tracks].sort((a, b) => (ORDER[a.kind] ?? 1) - (ORDER[b.kind] ?? 1)) };
     assertProject(project);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
     set((state) => ({
@@ -193,8 +196,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     };
     targetTrack.clips.push(clip);
 
-    // If media has audio and target is a video/overlay track, automatically add linked audio to Audio 1 track
-    if (media.hasAudio && targetTrack.kind !== 'audio') {
+    // 오디오가 있고 이미지가 아닐 때만 오디오 트랙에 자동 연결
+    if (media.hasAudio && !media.isImage && targetTrack.kind !== 'audio') {
       let audioTrack = next.tracks.find((t) => t.kind === 'audio');
       if (!audioTrack) {
         audioTrack = { id: 'audio-1', name: '오디오 1', kind: 'audio', clips: [], muted: false, locked: false };
