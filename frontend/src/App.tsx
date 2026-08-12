@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import {
-  ArrowDownToLine, ChevronLeft, ChevronRight, Copy, Crop, Download, FilePlus, Film, FolderUp, Gauge, LoaderCircle, Lock, Maximize2,
+  ArrowDownToLine, Check, ChevronLeft, ChevronRight, Copy, Crop, Download, FilePlus, Film, FolderUp, Gauge, LoaderCircle, Lock, Maximize2,
   Pause, Play, Plus, Redo2, RotateCw, Scissors, SkipBack, Trash2, Undo2, Unlink, Volume2, VolumeX, X,
 } from 'lucide-react';
 import { api, type ExportJob } from './api/transport';
@@ -252,6 +252,21 @@ function ClipRender({ clip, media, playhead, selected, zIndex, stageRef, setGuid
     const s = useEditorStore.getState();
     const baseline = structuredClone(s.project); let latest = baseline; let changed = false;
 
+    // Collect other active video/overlay clip edge targets for inter-clip magnetic snapping
+    const otherClipTargets: { x: number[]; y: number[] } = { x: [0, 0.5, 1], y: [0, 0.5, 1] };
+    for (const tr of s.project.tracks) {
+      if (tr.kind === 'audio') continue;
+      for (const cl of tr.clips) {
+        if (cl.id === clip.id) continue;
+        const active = s.playhead >= cl.timelineStart && s.playhead <= cl.timelineStart + clipDuration(cl);
+        if (!active) continue;
+        const cW = cl.transform.width * cl.transform.scale;
+        const cH = cl.transform.height * cl.transform.scale;
+        otherClipTargets.x.push(cl.transform.x, cl.transform.x + cW / 2, cl.transform.x + cW);
+        otherClipTargets.y.push(cl.transform.y, cl.transform.y + cH / 2, cl.transform.y + cH);
+      }
+    }
+
     const move = (p: PointerEvent) => {
       const dx = (p.clientX - startX) / box.width;
       const dy = (p.clientY - startY) / box.height;
@@ -263,13 +278,19 @@ function ClipRender({ clip, media, playhead, selected, zIndex, stageRef, setGuid
       const SNAP_PX = 0.03;
       let snapX: number | undefined, snapY: number | undefined;
 
-      if (Math.abs(rawX) <= SNAP_PX) { rawX = 0; snapX = 0; }
-      else if (Math.abs(rawX + curW - 1) <= SNAP_PX) { rawX = 1 - curW; snapX = 1; }
-      else if (Math.abs(rawX + curW / 2 - 0.5) <= SNAP_PX) { rawX = 0.5 - curW / 2; snapX = 0.5; }
+      // Magnetic snapping for X (left, center, right edges) against all other video clips
+      for (const targetX of otherClipTargets.x) {
+        if (Math.abs(rawX - targetX) <= SNAP_PX) { rawX = targetX; snapX = targetX; break; }
+        if (Math.abs(rawX + curW - targetX) <= SNAP_PX) { rawX = targetX - curW; snapX = targetX; break; }
+        if (Math.abs(rawX + curW / 2 - targetX) <= SNAP_PX) { rawX = targetX - curW / 2; snapX = targetX; break; }
+      }
 
-      if (Math.abs(rawY) <= SNAP_PX) { rawY = 0; snapY = 0; }
-      else if (Math.abs(rawY + curH - 1) <= SNAP_PX) { rawY = 1 - curH; snapY = 1; }
-      else if (Math.abs(rawY + curH / 2 - 0.5) <= SNAP_PX) { rawY = 0.5 - curH / 2; snapY = 0.5; }
+      // Magnetic snapping for Y (top, middle, bottom edges) against all other video clips
+      for (const targetY of otherClipTargets.y) {
+        if (Math.abs(rawY - targetY) <= SNAP_PX) { rawY = targetY; snapY = targetY; break; }
+        if (Math.abs(rawY + curH - targetY) <= SNAP_PX) { rawY = targetY - curH; snapY = targetY; break; }
+        if (Math.abs(rawY + curH / 2 - targetY) <= SNAP_PX) { rawY = targetY - curH / 2; snapY = targetY; break; }
+      }
 
       setGuideLine({ x: snapX, y: snapY });
       latest = structuredClone(baseline); changed = true;
@@ -832,6 +853,7 @@ function ExportModal({ close }: { close: () => void }) {
   useEffect(() => { const current = job; if (!current || terminal(current.status)) return; return api.watchExport(current.id, setJob) }, [job?.id]);
 
   const start = async () => {
+    setJob(undefined);
     setBusy(true);
     try {
       const p = structuredClone(s.project);
@@ -844,7 +866,19 @@ function ExportModal({ close }: { close: () => void }) {
     } finally { setBusy(false); }
   };
 
-  return <div className="modal-backdrop" role="presentation" onPointerDown={e => e.target === e.currentTarget && close()}>
+  const cancelCurrentJob = async () => {
+    if (!job) return;
+    try {
+      await api.cancelExport(job.id);
+    } catch {
+      // Ignore cancellation API error
+    } finally {
+      setJob(prev => prev ? { ...prev, status: 'cancelled' } : undefined);
+      close();
+    }
+  };
+
+  return <div className="modal-backdrop" role="presentation" onPointerDown={e => e.target === e.currentTarget && (!job || terminal(job.status)) && close()}>
     <div ref={dialog} className="modal" role="dialog" aria-modal="true" aria-labelledby="export-title" style={{ width: '350px' }}>
       <div className="modal-header">
         <h2 id="export-title" style={{ margin: 0, fontSize: '15px' }}>비디오 내보내기</h2>
@@ -864,13 +898,40 @@ function ExportModal({ close }: { close: () => void }) {
           {busy ? <LoaderCircle className="spin" /> : <Download style={{ width: 13 }} />} 비디오 렌더링 내보내기
         </button>
       </div> :
-      <div className={`export-status ${job.status}`} style={{ textAlign: 'center', padding: '6px 0' }}>
-        <div className="status-icon" style={{ margin: '0 auto 6px' }}>{job.status === 'complete' ? <Download /> : job.status === 'error' ? <X /> : <LoaderCircle className={terminal(job.status) ? '' : 'spin'} />}</div>
-        <h3 style={{ margin: '0 0 4px', fontSize: '13.5px', color: 'var(--text)' }}>{job.status === 'complete' ? '내보내기 성공!' : job.status === 'error' ? '내보내기 실패' : '비디오 렌더링 중...'}</h3>
-        {job.error && <p style={{ color: 'var(--danger)', fontSize: '11.5px' }}>{job.error}</p>}
-        <progress max="100" value={job.progress} style={{ width: '100%', height: '6px', margin: '6px 0' }} />
-        <span style={{ fontSize: '12.5px', fontWeight: 'bold', color: 'var(--text)' }}>{Math.round(job.progress)}%</span>
-        {job.status === 'complete' ? <a className="primary wide" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px', marginTop: '8px' }} href={job.downloadUrl || api.downloadUrl(job.id)} download><Download style={{ width: 13 }} /> MP4 다운로드</a> : !terminal(job.status) && <button className="secondary wide" style={{ marginTop: '8px' }} onClick={() => void api.cancelExport(job.id)}><X /> 렌더링 취소</button>}
+      <div className={`export-status ${job.status}`} style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '10px 0 4px', textAlign: 'center' }}>
+        <div className="status-icon" style={{ margin: '4px auto 0', display: 'grid', placeItems: 'center', width: '48px', height: '48px', borderRadius: '50%', background: 'var(--card-bg)', color: 'var(--accent-cyan)', border: '1px solid var(--line)' }}>
+          {job.status === 'complete' ? <Check style={{ width: 24, height: 24, color: 'var(--success)' }} /> : job.status === 'error' ? <X style={{ width: 24, height: 24, color: 'var(--danger)' }} /> : <LoaderCircle className={terminal(job.status) ? '' : 'spin'} style={{ width: 24, height: 24 }} />}
+        </div>
+        <div>
+          <h3 style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '700', color: 'var(--text)' }}>
+            {job.status === 'complete' ? '비디오 렌더링 완료!' : job.status === 'error' ? '내보내기 실패' : '비디오 렌더링 진행 중...'}
+          </h3>
+          {job.error && <p style={{ color: 'var(--danger)', fontSize: '11.5px', margin: '4px 0 0' }}>{job.error}</p>}
+        </div>
+
+        {!terminal(job.status) && <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', margin: '4px 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--muted)' }}>
+            <span>렌더링 진행률</span>
+            <span style={{ color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: '700' }}>{Math.round(job.progress)}%</span>
+          </div>
+          <progress max="100" value={job.progress} style={{ width: '100%', height: '8px', borderRadius: '4px', overflow: 'hidden' }} />
+        </div>}
+
+        <div style={{ marginTop: '4px' }}>
+          {job.status === 'complete' ? (
+            <a className="primary wide" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '38px', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold' }} href={job.downloadUrl || api.downloadUrl(job.id)} download>
+              <Download style={{ width: 15 }} /> MP4 비디오 다운로드
+            </a>
+          ) : !terminal(job.status) ? (
+            <button className="tool-button wide" style={{ height: '36px', borderRadius: '8px', justifyContent: 'center' }} onClick={() => void cancelCurrentJob()}>
+              <X style={{ width: 14 }} /> 렌더링 취소
+            </button>
+          ) : (
+            <button className="tool-button wide" style={{ height: '36px', borderRadius: '8px', justifyContent: 'center' }} onClick={close}>
+              닫기
+            </button>
+          )}
+        </div>
       </div>}
     </div>
   </div>;

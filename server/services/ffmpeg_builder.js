@@ -15,11 +15,12 @@ function splitAtempo(speed) {
 }
 
 function numStr(val) {
-  return Number(val.toFixed(6)).toString();
+  const num = Number(val ?? 0);
+  return (isNaN(num) ? 0 : num).toFixed(6);
 }
 
 function evenInt(val) {
-  const rounded = Math.max(2, Math.round(val));
+  const rounded = Math.max(2, Math.round(val ?? 2));
   return rounded % 2 === 0 ? rounded : rounded + 1;
 }
 
@@ -37,8 +38,12 @@ function buildFfmpegPlan(project, resolvedMediaMap, outputPath) {
 
   let maxDuration = 0;
   for (const { clip } of clips) {
-    const outDur = (clip.source_end - clip.source_start) / (clip.speed || 1);
-    const endPos = (clip.timeline_start || 0) + outDur;
+    const sStart = clip.sourceStart ?? clip.source_start ?? 0;
+    const sEnd = clip.sourceEnd ?? clip.source_end ?? 0;
+    const tStart = clip.timelineStart ?? clip.timeline_start ?? 0;
+    const speed = clip.speed || 1;
+    const outDur = (sEnd - sStart) / speed;
+    const endPos = tStart + outDur;
     if (endPos > maxDuration) maxDuration = endPos;
   }
 
@@ -94,11 +99,14 @@ function buildFfmpegPlan(project, resolvedMediaMap, outputPath) {
   for (const { track, clip } of clips) {
     const mId = clip.media_id || clip.mediaId;
     const idx = inputIndexMap[mId];
-    const startStr = numStr(clip.source_start || 0);
-    const endStr = numStr(clip.source_end);
-    const tStartStr = numStr(clip.timeline_start || 0);
+    const sStart = clip.sourceStart ?? clip.source_start ?? 0;
+    const sEnd = clip.sourceEnd ?? clip.source_end ?? 0;
+    const tStart = clip.timelineStart ?? clip.timeline_start ?? 0;
     const speed = clip.speed || 1;
-    const outDur = (clip.source_end - (clip.source_start || 0)) / speed;
+    const startStr = numStr(sStart);
+    const endStr = numStr(sEnd);
+    const tStartStr = numStr(tStart);
+    const outDur = (sEnd - sStart) / speed;
 
     if (track.type !== 'audio' && track.kind !== 'audio') {
       let curr = nextLabel('trim');

@@ -91,33 +91,43 @@ class JobManager {
     job.process = proc;
 
     let stderrBuffer = '';
-    proc.stderr.on('data', data => {
-      stderrBuffer += data.toString();
-      if (stderrBuffer.length > 5000) {
-        stderrBuffer = stderrBuffer.slice(-5000);
-      }
-    });
+    const parseProgress = (data) => {
+      const text = data.toString();
+      stderrBuffer += text;
+      if (stderrBuffer.length > 5000) stderrBuffer = stderrBuffer.slice(-5000);
 
-    proc.stdout.on('data', data => {
-      const lines = data.toString().split('\n');
+      const lines = text.split(/\r?\n/);
       for (const line of lines) {
-        const [key, val] = line.trim().split('=');
-        if (key && val) {
-          let seconds = null;
-          if (key === 'out_time_ms' || key === 'out_time_us') {
-            seconds = parseInt(val, 10) / 1000000;
+        const trimmed = line.trim();
+        let seconds = null;
+        if (trimmed.includes('=')) {
+          const [key, val] = trimmed.split('=');
+          if (key === 'out_time_us') {
+            const us = parseInt(val, 10);
+            if (!isNaN(us) && us > 0) seconds = us / 1000000;
           } else if (key === 'out_time') {
             const parts = val.split(':');
             if (parts.length === 3) {
-              seconds = parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseFloat(parts[2]);
+              const h = parseInt(parts[0], 10), m = parseInt(parts[1], 10), s = parseFloat(parts[2]);
+              if (!isNaN(h) && !isNaN(m) && !isNaN(s)) seconds = h * 3600 + m * 60 + s;
             }
           }
-          if (seconds !== null && job.duration > 0) {
-            const progress = Math.min(0.999, Math.max(0, seconds / job.duration));
-            this.updateJob(job, { progress });
+        }
+
+        if (seconds !== null && !isNaN(seconds) && seconds > 0 && job.duration > 0) {
+          const calculated = Math.min(99, Math.max(1, Math.floor((seconds / job.duration) * 100)));
+          // Monotonic Increase Guard: Progress strictly increases during active rendering
+          if (calculated > job.progress && calculated < 100) {
+            this.updateJob(job, { progress: calculated });
           }
         }
       }
+    };
+
+    proc.stdout.on('data', parseProgress);
+    proc.stderr.on('data', data => {
+      stderrBuffer += data.toString();
+      if (stderrBuffer.length > 5000) stderrBuffer = stderrBuffer.slice(-5000);
     });
 
     proc.on('close', code => {
@@ -130,7 +140,7 @@ class JobManager {
 
       if (code === 0 && fs.existsSync(job.tempPath)) {
         fs.renameSync(job.tempPath, job.outputPath);
-        this.updateJob(job, { status: 'completed', progress: 1 });
+        this.updateJob(job, { status: 'completed', progress: 100 });
       } else {
         const errMessage = stderrBuffer.slice(-2000) || `FFmpeg process exited with code ${code}`;
         this.updateJob(job, { status: 'failed', error: errMessage });

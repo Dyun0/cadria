@@ -26,12 +26,16 @@ const normalizeJob = (data: Record<string, unknown>): ExportJob => {
     failed: 'error', cancelled: 'cancelled',
   };
   const rawProgress = Number(data.progress ?? 0);
+  const status = statusMap[String(data.status)] ?? data.status as ExportJob['status'];
+  const calcProgress = rawProgress <= 1 && rawProgress > 0 ? rawProgress * 100 : rawProgress;
+  const progress = status === 'complete' ? 100 : Math.min(99, Math.floor(calcProgress));
+
   return {
-    id: String(data.id ?? data.jobId),
-    status: statusMap[String(data.status)] ?? data.status as ExportJob['status'],
-    progress: rawProgress <= 1 ? rawProgress * 100 : rawProgress,
+    id: String(data.id ?? data.jobId ?? data.job_id ?? ''),
+    status,
+    progress,
     error: data.error ? String(data.error) : undefined,
-    downloadUrl: data.downloadUrl ? String(data.downloadUrl) : undefined,
+    downloadUrl: data.download_url ? String(data.download_url) : data.downloadUrl ? String(data.downloadUrl) : undefined,
   };
 };
 
