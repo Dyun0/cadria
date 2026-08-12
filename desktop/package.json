@@ -1,0 +1,58 @@
+{
+  "name": "cadria-studio",
+  "productName": "Cadria Studio",
+  "version": "1.0.0",
+  "description": "Cadria Studio Video Editor Desktop Application",
+  "main": "main.js",
+  "author": "Cadria Team",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "multer": "^1.4.5-lts.1",
+    "uuid": "^10.0.0"
+  },
+  "build": {
+    "appId": "com.cadria.studio",
+    "productName": "Cadria Studio",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "dist/**/*",
+      "server/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "verifyUpdateCodeSignature": false,
+      "sign": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Cadria Studio",
+      "artifactName": "Cadria_Studio_Setup_${version}.exe"
+    }
+  }
+}

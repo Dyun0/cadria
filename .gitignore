@@ -61,3 +61,13 @@ build/
 *.spec
 __pycache__/
 *.manifest
+
+# Electron Desktop Build
+desktop/node_modules/
+desktop/release/
+desktop/dist/
+desktop/server/
+server/node_modules/
+win_build/
+*.zip
+*.tar.gz
