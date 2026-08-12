@@ -190,7 +190,7 @@ function Stage({ openCanvasContextMenu }: { openCanvasContextMenu: (e: React.Mou
             const media = clipMedia(s.project.media, clip); if (!media) return null;
             const active = s.playhead >= clip.timelineStart && s.playhead <= clip.timelineStart + clipDuration(clip);
             if (!active) return null;
-            return <ClipRender key={clip.id} clip={clip} media={media} playhead={s.playhead} selected={s.selectedClipId === clip.id} zIndex={(trackIdx + 1) * 10} stageRef={frame} setGuideLine={setGuideLine} onClick={() => useEditorStore.setState({ selectedClipId: clip.id })} openCanvasContextMenu={openCanvasContextMenu} />;
+            return <ClipRender key={clip.id} clip={clip} media={media} playhead={s.playhead} playing={s.playing} selected={s.selectedClipId === clip.id} zIndex={(trackIdx + 1) * 10} stageRef={frame} setGuideLine={setGuideLine} onClick={() => useEditorStore.setState({ selectedClipId: clip.id })} openCanvasContextMenu={openCanvasContextMenu} />;
           });
         })}
         {s.cropMode && current && <CropOverlay clip={current} stageRef={frame} />}
@@ -236,13 +236,32 @@ function getBackgroundCss(bg: ProjectV1['background']) {
   return bg.color;
 }
 
-function ClipRender({ clip, media, playhead, selected, zIndex, stageRef, setGuideLine, onClick, openCanvasContextMenu }: { clip: Clip; media: any; playhead: number; selected: boolean; zIndex?: number; stageRef: React.RefObject<HTMLDivElement | null>; setGuideLine: (g: { x?: number; y?: number }) => void; onClick: () => void; openCanvasContextMenu: (e: React.MouseEvent, clipId: string) => void }) {
+function ClipRender({ clip, media, playhead, playing, selected, zIndex, stageRef, setGuideLine, onClick, openCanvasContextMenu }: { clip: Clip; media: any; playhead: number; playing: boolean; selected: boolean; zIndex?: number; stageRef: React.RefObject<HTMLDivElement | null>; setGuideLine: (g: { x?: number; y?: number }) => void; onClick: () => void; openCanvasContextMenu: (e: React.MouseEvent, clipId: string) => void }) {
   const video = useRef<HTMLVideoElement>(null); const t = clip.transform; const c = clip.crop;
   useEffect(() => {
-    const el = video.current; if (!el) return;
+    const el = video.current; if (!el || media.isImage) return;
     const mediaTime = Math.max(0, clip.sourceStart + (playhead - clip.timelineStart) * clip.speed);
-    if (Math.abs(el.currentTime - mediaTime) > 0.04) el.currentTime = mediaTime;
-  }, [playhead, clip]);
+    
+    if (el.playbackRate !== clip.speed) {
+      el.playbackRate = clip.speed;
+    }
+
+    if (playing) {
+      if (Math.abs(el.currentTime - mediaTime) > 0.15) {
+        el.currentTime = mediaTime;
+      }
+      if (el.paused) {
+        void el.play().catch(() => {});
+      }
+    } else {
+      if (!el.paused) {
+        el.pause();
+      }
+      if (Math.abs(el.currentTime - mediaTime) > 0.02) {
+        el.currentTime = mediaTime;
+      }
+    }
+  }, [playhead, clip, playing, media.isImage]);
 
   const handlePointerDown = (e: ReactPointerEvent) => {
     onClick();
