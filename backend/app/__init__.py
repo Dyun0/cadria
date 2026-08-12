@@ -1,1 +1,0 @@
-"""FastAPI video converter backend."""
