@@ -773,6 +773,7 @@ function ContextMenu({ x, y, clipId, close }: { x: number; y: number; clipId?: s
     {clipId && <>
       <button className="context-menu-item" onClick={() => { s.duplicateClip(clipId); close(); }}><Copy /> 복제 (Ctrl+D)</button>
       <button className="context-menu-item" onClick={() => { s.copyClip(clipId); close(); }}><Copy /> 복사 (Ctrl+C)</button>
+      <button className="context-menu-item" onClick={() => { s.cutClip(clipId); close(); }}><Scissors /> 잘라내기 (Ctrl+X)</button>
     </>}
     {s.copiedClip && <button className="context-menu-item" onClick={() => { s.pasteClip(); close(); }}><Download /> 붙여넣기 (Ctrl+V)</button>}
     {clipId && <>
@@ -804,6 +805,9 @@ function CanvasContextMenu({ x, y, clipId, close }: { x: number; y: number; clip
     </button>
     <button className="context-menu-item" onClick={() => { s.copyClip(clipId); close(); }}>
       <Copy style={{ width: 14 }} /> <span>복사</span> <small style={{ marginLeft: 'auto', opacity: 0.6 }}>CTRL+C</small>
+    </button>
+    <button className="context-menu-item" onClick={() => { s.cutClip(clipId); close(); }}>
+      <Scissors style={{ width: 14 }} /> <span>잘라내기</span> <small style={{ marginLeft: 'auto', opacity: 0.6 }}>CTRL+X</small>
     </button>
     <button className="context-menu-item" onClick={() => { s.reorderLayer(clipId, 'front'); close(); }}>
       <ArrowDownToLine style={{ width: 14, transform: 'rotate(180deg)' }} /> <span>맨 앞으로 가져오기</span>
@@ -1055,7 +1059,7 @@ export default function App() {
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      const target = e.target; if (target instanceof HTMLElement && target.matches('input,select,textarea,[contenteditable="true"]')) return; const modifier = e.ctrlKey || e.metaKey; if (e.code === 'Space') { e.preventDefault(); useEditorStore.setState(s => ({ playing: !s.playing })) } else if (modifier && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? useEditorStore.getState().redo() : useEditorStore.getState().undo() } else if (modifier && e.key.toLowerCase() === 'y') { e.preventDefault(); useEditorStore.getState().redo() } else if (modifier && e.key.toLowerCase() === 'c') { e.preventDefault(); useEditorStore.getState().copyClip() } else if (modifier && e.key.toLowerCase() === 'v') { e.preventDefault(); useEditorStore.getState().pasteClip() } else if (e.key.toLowerCase() === 's') { useEditorStore.getState().split() } else if (e.key.toLowerCase() === 'g') { useEditorStore.getState().ripple() } else if (e.key === 'Delete' || e.key === 'Backspace') useEditorStore.getState().remove()
+      const target = e.target; if (target instanceof HTMLElement && target.matches('input,select,textarea,[contenteditable="true"]')) return; const modifier = e.ctrlKey || e.metaKey; if (e.code === 'Space') { e.preventDefault(); useEditorStore.setState(s => ({ playing: !s.playing })) } else if (modifier && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? useEditorStore.getState().redo() : useEditorStore.getState().undo() } else if (modifier && e.key.toLowerCase() === 'y') { e.preventDefault(); useEditorStore.getState().redo() } else if (modifier && e.key.toLowerCase() === 'c') { e.preventDefault(); useEditorStore.getState().copyClip() } else if (modifier && e.key.toLowerCase() === 'x') { e.preventDefault(); useEditorStore.getState().cutClip() } else if (modifier && e.key.toLowerCase() === 'v') { e.preventDefault(); useEditorStore.getState().pasteClip() } else if (e.key.toLowerCase() === 's') { useEditorStore.getState().split() } else if (e.key.toLowerCase() === 'g') { useEditorStore.getState().ripple() } else if (e.key === 'Delete' || e.key === 'Backspace') useEditorStore.getState().remove()
     }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key)
   }, []);
 

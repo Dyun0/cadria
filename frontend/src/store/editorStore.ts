@@ -40,7 +40,7 @@ interface EditorState {
   updateClip: (id: string, patch: Partial<Clip>) => void; trim: (id: string, edge: 'start' | 'end', time: number) => void;
   split: () => void; move: (id: string, time: number, trackId?: string) => void; remove: () => void;
   ripple: () => void; speed: (id: string, value: number) => void;
-  copyClip: (id?: string) => void; pasteClip: () => void; duplicateClip: (id?: string) => void; resetTransform: (id?: string) => void;
+  copyClip: (id?: string) => void; cutClip: (id?: string) => void; pasteClip: () => void; duplicateClip: (id?: string) => void; resetTransform: (id?: string) => void;
   reorderLayer: (clipId: string, direction: 'front' | 'forward' | 'backward' | 'back') => void;
 }
 
@@ -322,6 +322,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (clip) {
       set({ copiedClip: structuredClone(clip) });
       set({ notice: { kind: 'success', message: '클립이 복사되었습니다' } });
+    }
+  },
+  cutClip: (id) => {
+    const targetId = id ?? get().selectedClipId;
+    if (!targetId) return;
+    const clip = findSelectedClip(get()) ?? get().project.tracks.flatMap((t) => t.clips).find((c) => c.id === targetId);
+    if (clip) {
+      set({ copiedClip: structuredClone(clip) });
+      get().commit(deleteClip(get().project, targetId));
+      set({ selectedClipId: undefined, notice: { kind: 'success', message: '클립을 잘라냈습니다' } });
     }
   },
   pasteClip: () => {
