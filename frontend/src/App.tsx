@@ -969,9 +969,9 @@ function ExportModal({ close }: { close: () => void }) {
         </Field>
         <Field label="비디오 화질 품질">
           <select value={quality} onChange={e => setQuality(e.target.value as ExportSettings['quality'])} style={{ width: '100%', padding: '7px 10px', background: 'var(--input-bg)', border: '1px solid var(--line)', borderRadius: '6px', color: 'var(--text)', fontSize: '12.5px' }}>
-            <option value="draft">표준 화질 (Standard)</option>
-            <option value="standard">고화질 (High Quality HD)</option>
-            <option value="high">최고 화질 (Pro Ultra HD)</option>
+            <option value="draft">초안 / 속도우선 (Draft)</option>
+            <option value="standard">표준 화질 (Standard)</option>
+            <option value="high">고화질 (High Quality)</option>
           </select>
         </Field>
         <button className="primary wide" style={{ height: '36px', fontSize: '13px', fontWeight: 'bold', marginTop: '4px' }} disabled={busy || projectDuration(s.project) <= 0} onClick={() => void start()}>
