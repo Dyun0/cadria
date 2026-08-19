@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { api, type ExportJob } from './api/transport';
 import { clipDuration, moveClip, projectDuration, trimClip } from './core/edit';
-import { clipMedia, type Clip, type ExportSettings, type NormalizedCrop, type ProjectV1 } from './core/types';
+import { clipMedia, type Clip, type ExportSettings, type Media, type NormalizedCrop, type ProjectV1 } from './core/types';
 import { findSelectedClip, useEditorStore } from './store/editorStore';
 import './tokens.css';
 import './styles.css';
@@ -48,25 +48,34 @@ function MediaLibrary({ openContextMenu, confirmDelete, onSelectMedia, onAddMedi
   const s = useEditorStore(); const ref = useRef<HTMLInputElement>(null); const [drag, setDrag] = useState(false);
   const [uploadingTasks, setUploadingTasks] = useState<{ id: string; name: string }[]>([]);
 
+  const trackUpload = async (name: string, work: () => Promise<Media>) => {
+    const taskId = `up-${Math.random().toString(36).substring(2, 9)}`;
+    setUploadingTasks(prev => [...prev, { id: taskId, name }]);
+    try {
+      s.addMedia(await work());
+    } catch (e) {
+      useEditorStore.setState({ notice: { kind: 'error', message: e instanceof Error ? e.message : `${name} 업로드 실패` } });
+    } finally {
+      setUploadingTasks(prev => prev.filter(t => t.id !== taskId));
+    }
+  };
   const addFiles = async (files: FileList | File[]) => {
     const valid = Array.from(files).filter(f => f.type.startsWith('video/') || f.type.startsWith('audio/') || f.type.startsWith('image/'));
-    await Promise.all(valid.map(async (f) => {
-      const taskId = `up-${Math.random().toString(36).substring(2, 9)}`;
-      setUploadingTasks(prev => [...prev, { id: taskId, name: f.name }]);
-      try {
-        const m = await api.upload(f);
-        s.addMedia(m);
-      } catch (e) {
-        useEditorStore.setState({ notice: { kind: 'error', message: e instanceof Error ? e.message : `${f.name} 업로드 실패` } });
-      } finally {
-        setUploadingTasks(prev => prev.filter(t => t.id !== taskId));
-      }
-    }));
+    await Promise.all(valid.map((f) => trackUpload(f.name, () => api.upload(f))));
+  };
+  const addLocalPaths = async (paths: string[]) => {
+    await Promise.all(paths.map((p) => trackUpload(p.split(/[\\/]/).pop() || p, () => api.ingestLocal(p))));
   };
   return <aside className="media-panel" aria-label="미디어 라이브러리">
     <div className="panel-heading"><div><span>LIBRARY</span><h2>내 미디어</h2></div></div>
     <input ref={ref} hidden type="file" multiple accept="video/*,audio/*,image/*" onChange={(e) => e.target.files && void addFiles(e.target.files)} />
-    <div className={`upload-zone ${drag ? 'is-dragging' : ''}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); void addFiles(e.dataTransfer.files); }} onClick={() => ref.current?.click()}>
+    <div className={`upload-zone ${drag ? 'is-dragging' : ''}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); void addFiles(e.dataTransfer.files); }} onClick={() => {
+      if (window.cadria?.pickMediaFiles) {
+        void window.cadria.pickMediaFiles().then((paths) => { if (paths.length) void addLocalPaths(paths); });
+        return;
+      }
+      ref.current?.click();
+    }}>
       <FolderUp /><strong>미디어/오디오 드래그 또는 클릭</strong><small>비디오 (MP4, AVI), 오디오, 이미지 지원</small>
     </div>
     {uploadingTasks.length > 0 && (

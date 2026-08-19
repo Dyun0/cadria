@@ -1,23 +1,25 @@
 # Cadria 애플리케이션 구조
 
-Cadria는 브라우저에서 편집 상태와 미리보기를 관리하고, FastAPI가 미디어 저장과 FFmpeg 렌더링을 담당한다. 두 영역은 `ProjectV1` JSON과 HTTP API를 경계로 분리되어 있다.
+Cadria는 브라우저에서 편집 상태와 미리보기를 관리하고, Express가 미디어 저장과 FFmpeg 렌더링을 담당한다. 두 영역은 `ProjectV1` JSON과 HTTP API를 경계로 분리되어 있다.
 
 ```text
-Browser
+Browser / Electron WebView
   └─ React UI
       ├─ 편집 상태와 히스토리
       ├─ 실시간 미리보기
       └─ API transport
              │ HTTP / SSE
              ▼
-FastAPI
+Express (Node.js)
   ├─ 미디어 등록과 메타데이터
   ├─ 비동기 내보내기 작업
   └─ FFmpeg / ffprobe
              │
              ▼
-       영속 데이터 볼륨
+       영속 데이터 디렉터리
 ```
+
+웹은 Docker 컨테이너가 같은 스택을 제공한다. Windows 앱은 Electron이 Express를 127.0.0.1에 띄우고 FFmpeg를 번들한다. 데스크톱 패키징은 `docs/desktop.md`를 따른다.
 
 ## 프론트엔드
 
@@ -59,21 +61,16 @@ frontend/
 
 ## 백엔드
 
-백엔드는 FastAPI, Pydantic, asyncio와 FFmpeg로 구성한다.
+백엔드는 Express와 FFmpeg로 구성한다.
 
 ```text
-backend/
-├─ app/
-│  ├─ main.py               API 라우팅, CORS, 정적 프론트 제공
-│  ├─ config.py             환경 변수와 데이터 경로 설정
-│  ├─ models.py             API 요청·응답 및 프로젝트 검증
-│  └─ services/
-│     ├─ media.py           업로드, ffprobe 검사, 썸네일 생성
-│     ├─ registry.py        미디어 파일과 메타데이터 조회
-│     ├─ ffmpeg_builder.py  프로젝트를 FFmpeg 명령으로 변환
-│     └─ jobs.py            렌더 큐, 진행률, 취소, 결과 관리
-├─ tests/                   모델과 서비스 단위·통합 테스트
-└─ requirements.txt
+server/
+├─ index.js                 API 라우팅, CORS, 정적 프론트 제공
+├─ config.js                환경 변수와 데이터 경로 설정
+└─ services/
+   ├─ media.js              업로드, ffprobe 검사, 썸네일 생성
+   ├─ ffmpeg_builder.js     프로젝트를 FFmpeg 명령으로 변환
+   └─ jobs.js               렌더 큐, 진행률, 취소, 결과 관리
 ```
 
 ### 미디어 처리
@@ -83,12 +80,12 @@ backend/
 3. 검사가 끝난 파일만 최종 경로로 이동하고 FFmpeg로 썸네일을 만든다.
 4. UUID 기반 파일명과 JSON 메타데이터를 `MediaRegistry`에 원자적으로 저장한다.
 
-파일 시스템 경로는 API에 직접 노출하지 않는다. 클라이언트와 렌더 요청은 미디어 UUID만 사용하며, 백엔드가 UUID를 실제 파일로 해석한다.
+파일 시스템 경로는 API에 직접 노출하지 않는다. 클라이언트와 렌더 요청은 미디어 UUID만 사용하며, 백엔드가 UUID를 실제 파일로 해석한다. 데스크톱만 네이티브 대화상자로 고른 로컬 경로를 `POST /api/media/local`로 넘긴다.
 
 ### 내보내기 작업
 
 1. `POST /api/exports`가 프로젝트를 검증하고 작업을 생성한다.
-2. `ffmpeg_builder.py`가 트림, 속도, 크롭, 회전, 반전, 배치, 배경과 오디오를 필터 그래프로 변환한다.
+2. `ffmpeg_builder.js`가 트림, 속도, 크롭, 회전, 반전, 배치, 배경과 오디오를 필터 그래프로 변환한다.
 3. `JobManager`가 동시 실행 수를 제한하고 FFmpeg를 비동기 프로세스로 실행한다.
 4. FFmpeg 진행 정보를 `0–1` 범위로 기록하고 SSE 구독자에게 상태 변경을 알린다.
 5. 성공한 임시 결과만 최종 MP4 경로로 원자적으로 이동한다. 실패하거나 취소된 작업의 부분 파일은 삭제한다.
@@ -99,6 +96,7 @@ backend/
 
 - `GET /api/health`: API와 FFmpeg/ffprobe 상태 확인
 - `POST /api/media`: 미디어 업로드와 메타데이터 생성
+- `POST /api/media/local`: 데스크톱 로컬 파일 수집 (Electron 전용)
 - `GET /api/media/{mediaId}/stream`: 브라우저 미리보기 스트림
 - `GET /api/media/{mediaId}/thumbnail`: 미디어 썸네일
 - `POST /api/exports`: 내보내기 작업 생성
@@ -107,11 +105,9 @@ backend/
 - `DELETE /api/exports/{jobId}`: 실행 중인 작업 취소
 - `GET /api/exports/{jobId}/download`: 완성된 MP4 다운로드
 
-OpenAPI 문서는 실행 중인 서버의 `/api/docs`에서 확인할 수 있다.
-
 ## 데이터와 배포
 
-Docker 이미지 빌드 시 Vite가 생성한 정적 파일을 FastAPI 이미지에 포함한다. 운영 환경에서는 하나의 컨테이너가 API와 프론트엔드를 함께 제공하며 `/app/data`를 Docker 볼륨에 연결한다.
+Docker 이미지 빌드 시 Vite가 생성한 정적 파일을 Node 이미지에 포함한다. 운영 환경에서는 하나의 컨테이너가 API와 프론트엔드를 함께 제공하며 `/app/data`를 Docker 볼륨에 연결한다.
 
 ```text
 data/
@@ -123,10 +119,12 @@ data/
 
 편집 프로젝트는 현재 브라우저 `localStorage`에 저장된다. 업로드 원본과 내보내기 결과는 서버 데이터 볼륨에 저장되므로 컨테이너를 다시 만들어도 유지된다.
 
+Windows 설치본은 같은 디렉터리 구조를 `%APPDATA%\Cadria Studio\cadria-data\`에 둔다.
+
 ## 변경 원칙
 
-- 프로젝트 스키마를 변경하면 프론트엔드 타입, 백엔드 Pydantic 모델과 마이그레이션을 함께 갱신한다.
-- 화면 변환을 변경하면 `transforms.ts`와 `ffmpeg_builder.py`의 결과가 같은지 확인한다.
+- 프로젝트 스키마를 변경하면 프론트엔드 타입과 백엔드 검증을 함께 갱신한다.
+- 화면 변환을 변경하면 `transforms.ts`와 `ffmpeg_builder.js`의 결과가 같은지 확인한다.
 - UI에서 직접 HTTP 요청을 만들지 않고 `WebApiTransport`를 통해 호출한다.
 - 라우터에는 흐름 제어만 두고 미디어, 저장소, 렌더 로직은 서비스에 유지한다.
-- 데스크톱 전환 경계와 패키징 전략은 `docs/desktop.md`를 따른다.
+- 데스크톱 패키징은 `docs/desktop.md`를 따른다.

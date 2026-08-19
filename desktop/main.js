@@ -1,6 +1,7 @@
-const { app, BrowserWindow, Menu, dialog } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 let mainWindow;
 
@@ -30,6 +31,17 @@ function setupFFmpegPath() {
   console.log('⚠️ Bundled FFmpeg not found, falling back to system PATH.');
 }
 
+ipcMain.handle('dialog:openMedia', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '미디어 열기',
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: 'Media', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', 'mp3', 'wav', 'aac', 'flac', 'png', 'jpg', 'jpeg', 'webp', 'gif'] }
+    ]
+  });
+  return result.canceled ? [] : result.filePaths;
+});
+
 async function createWindow() {
   Menu.setApplicationMenu(null);
 
@@ -37,6 +49,11 @@ async function createWindow() {
 
   const dataDir = path.join(app.getPath('userData'), 'cadria-data');
   process.env.DATA_DIR = dataDir;
+  process.env.HOST = '127.0.0.1';
+  process.env.CADRIA_ALLOW_LOCAL_MEDIA = '1';
+
+  const sessionToken = crypto.randomBytes(32).toString('hex');
+  process.env.CADRIA_SESSION_TOKEN = sessionToken;
 
   const frontendDistPath = path.join(__dirname, 'dist');
   process.env.FRONTEND_DIST = frontendDistPath;
@@ -51,18 +68,29 @@ async function createWindow() {
     backgroundColor: '#0a0a0f',
     show: false,
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false
+      sandbox: true
     }
   });
 
   try {
     const serverModulePath = path.join(__dirname, 'server', 'index.js');
     const { startServer } = require(serverModulePath);
-    const PORT = 39017;
-    await startServer(PORT);
-    mainWindow.loadURL(`http://127.0.0.1:${PORT}`);
+    const server = await startServer({ port: 39017, host: '127.0.0.1', allowFallback: true });
+    const addr = server.address();
+    const port = typeof addr === 'object' && addr ? addr.port : 39017;
+    const origin = `http://127.0.0.1:${port}`;
+    await mainWindow.webContents.session.cookies.set({
+      url: origin,
+      name: 'cadria_token',
+      value: sessionToken,
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax'
+    });
+    await mainWindow.loadURL(origin);
   } catch (err) {
     console.error('Failed to start server:', err);
     dialog.showErrorBox('Cadria Studio Server Error', `서버 구동 실패:\n${err.stack || err.message}`);

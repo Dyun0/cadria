@@ -27,15 +27,18 @@
     },
     "files": [
       "main.js",
+      "preload.js",
       "dist/**/*",
-      "server/**/*"
+      "server/**/*",
+      "!server/node_modules/**",
+      "!server/data/**"
     ],
     "extraResources": [
       {
         "from": "bin",
         "to": "bin",
         "filter": [
-          "**/*"
+          "*.exe"
         ]
       }
     ],
@@ -43,15 +46,19 @@
       "target": [
         "nsis"
       ],
-      "verifyUpdateCodeSignature": false,
-      "sign": null
+      "signAndEditExecutable": false,
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "oneClick": false,
+      "perMachine": false,
       "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Cadria Studio",
+      "uninstallDisplayName": "Cadria Studio",
+      "deleteAppDataOnUninstall": false,
       "artifactName": "Cadria_Studio_Setup_${version}.exe"
     }
   }

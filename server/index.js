@@ -17,10 +17,54 @@ const upload = multer({
   limits: { fileSize: settings.maxUploadBytes }
 });
 
+function cookieValue(req, name) {
+  const raw = req.headers.cookie || '';
+  const parts = raw.split(';');
+  for (const part of parts) {
+    const trimmed = part.trim();
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    if (trimmed.slice(0, eq) === name) {
+      return decodeURIComponent(trimmed.slice(eq + 1));
+    }
+  }
+  return '';
+}
+
+function configureCors() {
+  const raw = process.env.CORS_ORIGINS;
+  if (raw === '*') return cors();
+  if (raw) {
+    const allow = raw.split(',').map((s) => s.trim()).filter(Boolean);
+    return cors({ origin: allow, credentials: true });
+  }
+  return cors({
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      try {
+        const host = new URL(origin).hostname;
+        if (host === '127.0.0.1' || host === 'localhost') return cb(null, true);
+      } catch (_) { /* ignore */ }
+      cb(new Error('Not allowed by CORS'));
+    },
+    credentials: true
+  });
+}
+
 const app = express();
 
-app.use(cors());
+app.use(configureCors());
 app.use(express.json({ limit: '100mb' }));
+
+const sessionToken = process.env.CADRIA_SESSION_TOKEN || '';
+if (sessionToken) {
+  app.use((req, res, next) => {
+    if (!req.path.startsWith('/api/')) return next();
+    const provided = req.get('x-cadria-token') || req.query.token || cookieValue(req, 'cadria_token');
+    if (provided === sessionToken) return next();
+    res.status(401).json({ detail: 'Unauthorized' });
+  });
+}
 
 // 1. Health check
 app.get('/api/health', (req, res) => {
@@ -50,6 +94,39 @@ const uploadHandler = async (req, res) => {
 };
 app.post('/api/upload', upload.single('media'), uploadHandler);
 app.post('/api/media', upload.single('media'), uploadHandler);
+
+app.post('/api/media/local', async (req, res) => {
+  if (process.env.CADRIA_ALLOW_LOCAL_MEDIA !== '1') {
+    return res.status(404).json({ detail: 'Not found' });
+  }
+  const src = req.body && req.body.path;
+  if (typeof src !== 'string' || !path.isAbsolute(src)) {
+    return res.status(400).json({ detail: 'Invalid path' });
+  }
+  let stat;
+  try {
+    stat = fs.statSync(src);
+  } catch (_) {
+    return res.status(400).json({ detail: 'File not found' });
+  }
+  if (!stat.isFile()) {
+    return res.status(400).json({ detail: 'File not found' });
+  }
+  const tmpPath = path.join(settings.uploadDir, `local-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  try {
+    fs.copyFileSync(src, tmpPath);
+    const result = await ingestUpload({
+      path: tmpPath,
+      originalname: path.basename(src),
+      mimetype: 'application/octet-stream',
+      size: stat.size
+    }, settings, registry);
+    res.status(201).json(result);
+  } catch (err) {
+    if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    res.status(400).json({ detail: err.message });
+  }
+});
 
 // 3. Stream Media
 app.get('/api/media/:mediaId/stream', (req, res) => {
@@ -170,18 +247,50 @@ if (fs.existsSync(settings.frontendDist)) {
   });
 }
 
-function startServer(port = process.env.PORT || 39017, host = process.env.HOST || '0.0.0.0') {
-  return new Promise((resolve, reject) => {
+function startServer(portOrOpts, hostArg) {
+  const opts = (portOrOpts && typeof portOrOpts === 'object')
+    ? portOrOpts
+    : { port: portOrOpts, host: hostArg };
+  const host = opts.host || process.env.HOST || '127.0.0.1';
+  const preferredPort = Number(opts.port || process.env.PORT || 39017);
+  const allowFallback = opts.allowFallback ?? !process.env.PORT;
+
+  const listen = (port) => new Promise((resolve, reject) => {
     const server = app.listen(port, host, () => {
-      console.log(`🚀 Cadria Node.js Backend running at http://${host}:${port}`);
+      const addr = server.address();
+      const actualPort = typeof addr === 'object' && addr ? addr.port : port;
+      console.log(`🚀 Cadria Node.js Backend running at http://${host}:${actualPort}`);
       resolve(server);
     });
-    server.on('error', reject);
+    server.once('error', (err) => {
+      server.close(() => {});
+      reject(err);
+    });
   });
+
+  return (async () => {
+    if (!allowFallback) return listen(preferredPort);
+    for (let i = 0; i <= 30; i += 1) {
+      try {
+        return await listen(preferredPort + i);
+      } catch (err) {
+        if (err.code !== 'EADDRINUSE') throw err;
+        console.warn(`Port ${preferredPort + i} in use, trying next...`);
+      }
+    }
+    return listen(0);
+  })();
 }
 
 if (require.main === module) {
-  startServer(process.env.PORT || 39017);
+  startServer({
+    port: process.env.PORT || 39017,
+    host: process.env.HOST || '127.0.0.1',
+    allowFallback: !process.env.PORT
+  }).catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
 }
 
 module.exports = { app, startServer, settings };

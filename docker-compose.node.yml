@@ -12,6 +12,7 @@ services:
       - cadria-data:/app/data
     environment:
       PORT: 3001
+      HOST: 0.0.0.0
       DATA_DIR: /app/data
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-2147483648}
       CORS_ORIGINS: "*"

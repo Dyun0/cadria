@@ -1,40 +1,31 @@
-# Cadria Studio Desktop App 가이드
+# Cadria Studio Desktop 빌드
 
-Cadria Studio는 Node.js 내장 백엔드 및 Electron 기반의 독립형 데스크톱 전용 비디오 편집기 애플리케이션입니다.
-추가 파이썬 설치나 외부 웹서버 설정 없이, 실행 파일 더블클릭만으로 100% 오프라인 동작합니다.
+Cadria Studio는 Node.js 백엔드와 Electron 셸을 하나의 Windows 앱으로 묶는다. 시스템 파이썬은 필요 없다.
 
----
+## 구성
 
-## 1. 주요 아키텍처
+- **UI**: React + TypeScript (`frontend/dist`)
+- **Backend**: Express (`server/`), Electron 메인 프로세스에서 기동
+- **Shell**: Electron 33 (`desktop/`)
+- **Engine**: 빌드 때 받는 Windows FFmpeg/ffprobe (`desktop/bin` → `extraResources`)
+- **Installer**: electron-builder NSIS (`Cadria_Studio_Setup_1.0.0.exe`)
 
-- **UI Core**: React + TypeScript + Canvas Timeline (`frontend/dist`)
-- **Backend Service**: Node.js Express Backend (`server/`)
-  - 미디어 업로드, `ffprobe` 메타데이터 탐색, 썸네일 생성, 타임라인 `filter_complex` FFmpeg 렌더링 내보내기 전담
-- **Desktop Shell**: Electron 셸 (`desktop/`)
-- **FFmpeg Engine**: Windows 64-bit static 바이너리 (`bin/ffmpeg.exe`, `bin/ffprobe.exe`) 내장
+## 빌드
 
----
+Linux/macOS/Windows에서 아래만 실행하면 된다. 프론트엔드·데스크톱 의존성과 Windows FFmpeg는 스크립트가 준비한다. Linux에서 NSIS를 만들 때는 Wine이 필요하고, Wine이 없으면 Docker 이미지 `electronuserland/builder:wine`을 쓴다.
 
-## 2. 데스크톱 패키지 빌드 방법
-
-### 원클릭 빌드 스크립트 실행
 ```bash
-# 1. 의존성 설치
-cd server && npm install
-cd ../desktop && npm install
-
-# 2. Windows 데스크톱 앱 패키징 스크립트 실행
 node scripts/build_windows_installer.js
 ```
 
-빌드가 완료되면 `desktop/release/` 디렉터리에 설치 파일 및 실행 패키지가 생성됩니다.
+완료 후 설치 파일:
 
----
+```text
+desktop/release/Cadria_Studio_Setup_1.0.0.exe
+```
 
-## 3. 사용자 설치 및 실행 안내
+## 사용자 설치
 
-1. 배포된 `Cadria_Studio_Windows_x64.zip` 압축을 풉니다.
-2. `Install_Cadria_Studio.bat` 파일을 실행합니다.
-   - `AppData/Local/CadriaStudio` 경로에 모든 시스템 및 바이너리 파일이 자동으로 덮어쓰기 설치됩니다.
-   - 바탕화면 및 시작 메뉴에 `Cadria Studio` 바로가기 아이콘이 자동 생성됩니다.
-3. 바탕화면의 `Cadria Studio` 아이콘을 더블클릭하여 바로 비디오 편집기를 사용할 수 있습니다.
+1. `Cadria_Studio_Setup_1.0.0.exe`를 실행한다.
+2. 설치 마법사에서 경로를 확인한 뒤 설치한다. 바탕화면·시작 메뉴 바로가기가 만들어진다.
+3. `Cadria Studio`를 실행한다. Express는 `127.0.0.1`에서 UI를 서빙한다.

@@ -74,13 +74,15 @@ docker compose -f docker-compose.node.yml logs -f cadria
 
 ## 💻 데스크톱 앱 (Windows 64-bit)
 
-Electron 독립형 데스크톱 실행 파일과 원클릭 패키징 스크립트를 제공합니다.
+Electron + NSIS 설치 파일로 배포합니다. FFmpeg는 빌드 때 받아 앱에 넣습니다.
 
-- **원클릭 빌드 스크립트 실행**:
-  ```bash
-  node scripts/build_windows_installer.js
-  ```
-- 데스크톱 설치 패키지 관련 상세 설명은 [`docs/desktop_build.md`](docs/desktop_build.md) 문서를 참고하세요.
+```bash
+node scripts/build_windows_installer.js
+```
+
+산출물: `desktop/release/Cadria_Studio_Setup_1.0.0.exe`
+
+설치 마법사를 실행하면 시작 메뉴와 바탕화면 바로가기가 만들어집니다. 자세한 내용은 [`docs/desktop_build.md`](docs/desktop_build.md)를 참고하세요.
 
 ---
 

@@ -56,18 +56,19 @@ _internal
 # Development artifacts
 json/update.json
 
-# PyInstaller & Desktop Build Artifacts
+# Desktop Build Artifacts
 build/
-*.spec
 __pycache__/
-*.manifest
 
 # Electron Desktop Build
 desktop/node_modules/
 desktop/release/
 desktop/dist/
 desktop/server/
+desktop/bin/*.exe
+desktop/bin/*.zip
 server/node_modules/
+.cache/
 win_build/
 *.zip
 *.tar.gz

@@ -1,1 +1,5 @@
-// preload - contextBridge 확장용 (현재는 빈 셸)
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('cadria', {
+  pickMediaFiles: () => ipcRenderer.invoke('dialog:openMedia')
+});

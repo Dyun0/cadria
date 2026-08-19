@@ -3,6 +3,7 @@ import type { Media, ProjectV1 } from '../core/types';
 export interface ExportJob { id: string; status: 'queued' | 'processing' | 'complete' | 'cancelled' | 'error'; progress: number; error?: string; downloadUrl?: string }
 export interface WebApiTransport {
   upload(file: File, signal?: AbortSignal): Promise<Media>;
+  ingestLocal(filePath: string, signal?: AbortSignal): Promise<Media>;
   createExport(project: ProjectV1, signal?: AbortSignal): Promise<ExportJob>;
   getExport(id: string, signal?: AbortSignal): Promise<ExportJob>;
   watchExport(id: string, onUpdate: (job: ExportJob) => void): () => void;
@@ -55,6 +56,14 @@ export class FetchWebApiTransport implements WebApiTransport {
   async upload(file: File, signal?: AbortSignal) {
     const form = new FormData(); form.append('media', file);
     return normalizeMedia(await json<Record<string, unknown>>('/api/media', { method: 'POST', body: form, signal }));
+  }
+  async ingestLocal(filePath: string, signal?: AbortSignal) {
+    return normalizeMedia(await json<Record<string, unknown>>('/api/media/local', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: filePath }),
+      signal,
+    }));
   }
   async createExport(project: ProjectV1, signal?: AbortSignal) {
     return normalizeJob(await json<Record<string, unknown>>('/api/exports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project }), signal }));
