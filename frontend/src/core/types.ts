@@ -6,6 +6,7 @@ export interface NormalizedTransform {
   rotation: 0 | 90 | 180 | 270; flipX: boolean; flipY: boolean;
 }
 export interface ClipAudio { enabled: boolean; volume: number }
+export interface Subtitle { text: string; fontSize: number; color: string; fontId?: string; bold?: boolean }
 
 export interface Media {
   id: ID; name: string; originalName?: string; url: string; duration: number; width: number; height: number;
@@ -14,7 +15,9 @@ export interface Media {
 export interface Clip {
   id: ID; mediaId: ID; sourceStart: number; sourceEnd: number; timelineStart: number;
   speed: number; crop: NormalizedCrop; transform: NormalizedTransform; audio: ClipAudio;
+  subtitle?: Subtitle;
 }
+export const isSubtitleClip = (clip: Clip) => Boolean(clip.subtitle);
 export interface Track { id: ID; name: string; kind: 'video' | 'overlay' | 'audio'; clips: Clip[]; muted: boolean; locked: boolean }
 export interface Background {
   type: 'solid' | 'gradient' | 'blur';

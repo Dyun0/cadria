@@ -46,6 +46,10 @@ async function createWindow() {
   Menu.setApplicationMenu(null);
 
   setupFFmpegPath();
+  const bundledFont = path.join(process.resourcesPath || '', 'fonts', 'GowunDodum-Regular.ttf');
+  const repoFont = path.join(__dirname, '..', 'assets', 'fonts', 'GowunDodum-Regular.ttf');
+  if (fs.existsSync(bundledFont)) process.env.CADRIA_FONT_FILE = bundledFont;
+  else if (fs.existsSync(repoFont)) process.env.CADRIA_FONT_FILE = repoFont;
 
   const dataDir = path.join(app.getPath('userData'), 'cadria-data');
   process.env.DATA_DIR = dataDir;
@@ -58,12 +62,16 @@ async function createWindow() {
   const frontendDistPath = path.join(__dirname, 'dist');
   process.env.FRONTEND_DIST = frontendDistPath;
 
+  const appIconPath = path.join(__dirname, 'build', 'icon.png');
+  const iconToUse = fs.existsSync(appIconPath) ? appIconPath : (fs.existsSync(path.join(__dirname, 'icon.png')) ? path.join(__dirname, 'icon.png') : undefined);
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1024,
     minHeight: 720,
     title: 'Cadria Studio',
+    icon: iconToUse,
     autoHideMenuBar: true,
     backgroundColor: '#0a0a0f',
     show: false,

@@ -25,6 +25,7 @@
     "directories": {
       "output": "release"
     },
+    "icon": "build/icon.ico",
     "files": [
       "main.js",
       "preload.js",
@@ -40,13 +41,20 @@
         "filter": [
           "*.exe"
         ]
+      },
+      {
+        "from": "../assets/fonts",
+        "to": "fonts",
+        "filter": [
+          "*.ttf"
+        ]
       }
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis"
       ],
-      "signAndEditExecutable": false,
       "verifyUpdateCodeSignature": false
     },
     "nsis": {
@@ -54,6 +62,8 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "allowElevation": true,
+      "installerIcon": "build/installerIcon.ico",
+      "uninstallerIcon": "build/uninstallerIcon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Cadria Studio",

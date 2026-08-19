@@ -34,8 +34,9 @@ interface EditorState {
   setTheme: (theme: 'dark' | 'light') => void; setShowSettingsModal: (show: boolean) => void;
   commit: (project: ProjectV1) => void; undo: () => void; redo: () => void;
   newProject: () => void;
-  addMedia: (media: Media) => void; deleteMedia: (mediaId: string) => void; addClip: (mediaId: string, trackId?: string) => void;
+  addMedia: (media: Media) => void; deleteMedia: (mediaId: string) => void;   addClip: (mediaId: string, trackId?: string) => void;
   addOverlayClip: (mediaId: string) => void; addAudioClip: (mediaId: string) => void;
+  addSubtitleClip: () => void;
   addTrack: (kind: 'video' | 'overlay' | 'audio') => void; deleteTrack: (trackId: string) => void;
   updateClip: (id: string, patch: Partial<Clip>) => void; trim: (id: string, edge: 'start' | 'end', time: number) => void;
   split: () => void; move: (id: string, time: number, trackId?: string) => void; remove: () => void;
@@ -141,6 +142,32 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     get().commit(next);
     set({ selectedTrackId: id, notice: { kind: 'success', message: `${name} 트랙이 생성되었습니다` } });
+  },
+  addSubtitleClip: () => {
+    const { project, playhead, selectedTrackId } = get();
+    const next = structuredClone(project);
+    const selected = next.tracks.find((t) => t.id === selectedTrackId);
+    let targetTrack = selected?.kind === 'overlay' ? selected : next.tracks.find((t) => t.kind === 'overlay');
+    if (!targetTrack) {
+      targetTrack = { id: `overlay-${Date.now()}`, name: '오버레이 1', kind: 'overlay', clips: [], muted: false, locked: false };
+      const videoIdx = next.tracks.findIndex((t) => t.kind === 'video');
+      next.tracks.splice(videoIdx >= 0 ? videoIdx + 1 : 0, 0, targetTrack);
+    }
+    const clip: Clip = {
+      id: safeUUID(),
+      mediaId: '',
+      sourceStart: 0,
+      sourceEnd: 3,
+      timelineStart: playhead,
+      speed: 1,
+      crop: { ...DEFAULT_CROP },
+      transform: { ...DEFAULT_TRANSFORM, x: 0.08, y: 0.78, width: 0.84, height: 0.16 },
+      audio: { enabled: false, volume: 1 },
+      subtitle: { text: '자막', fontSize: 48, color: '#ffffff', fontId: 'gowun-dodum', bold: false },
+    };
+    targetTrack.clips.push(clip);
+    get().commit(next);
+    set({ selectedClipId: clip.id, selectedTrackId: targetTrack.id, notice: { kind: 'success', message: `[${targetTrack.name}] 트랙에 자막이 추가되었습니다` } });
   },
   deleteTrack: (trackId) => {
     const next = structuredClone(get().project);
@@ -457,6 +484,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         targetTrackIdx = visualTrackIndices[currentVisualPos - 1];
       }
     }
+
+    if (targetClip.subtitle && next.tracks[targetTrackIdx].kind !== 'overlay') return;
 
     if (targetTrackIdx !== srcTrackIdx) {
       next.tracks[srcTrackIdx].clips = next.tracks[srcTrackIdx].clips.filter((c) => c.id !== clipId);

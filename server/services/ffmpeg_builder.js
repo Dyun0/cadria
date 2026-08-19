@@ -1,3 +1,34 @@
+const fs = require('fs');
+const path = require('path');
+
+const FONT_FILES = {
+  'gowun-dodum': 'GowunDodum-Regular.ttf',
+  'gowun-batang': 'GowunBatang-Regular.ttf',
+  'jua': 'Jua-Regular.ttf',
+  'do-hyeon': 'DoHyeon-Regular.ttf',
+  'noto-sans': 'NotoSansKR-Regular.ttf',
+};
+
+function resolveFontFile(fontId) {
+  const fileName = FONT_FILES[fontId] || FONT_FILES['gowun-dodum'];
+  const candidates = [
+    process.env.CADRIA_FONT_FILE && fontId === 'gowun-dodum' ? process.env.CADRIA_FONT_FILE : null,
+    path.join(process.resourcesPath || '', 'fonts', fileName),
+    path.join(__dirname, '../../assets/fonts', fileName),
+    path.join(__dirname, '../../frontend/public/fonts', fileName),
+  ].filter(Boolean);
+  return candidates.find((file) => fs.existsSync(file)) || '';
+}
+
+function escapeDrawtext(value) {
+  return String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, '\u2019')
+    .replace(/:/g, '\\:')
+    .replace(/%/g, '\\%')
+    .replace(/\r?\n/g, '\\n');
+}
+
 function splitAtempo(speed) {
   if (speed < 0.1 || speed > 16) throw new Error("Speed must be between 0.1 and 16");
   const factors = [];
@@ -47,7 +78,7 @@ function buildFfmpegPlan(project, resolvedMediaMap, outputPath) {
     if (endPos > maxDuration) maxDuration = endPos;
   }
 
-  const mediaIds = Array.from(new Set(clips.map(c => c.clip.media_id || c.clip.mediaId)));
+  const mediaIds = Array.from(new Set(clips.map(c => c.clip.media_id || c.clip.mediaId).filter(Boolean)));
   const blurId = project.background?.blur_source_id || project.background?.blurSourceId;
   if (blurId && !mediaIds.includes(blurId)) {
     mediaIds.push(blurId);
@@ -99,6 +130,7 @@ function buildFfmpegPlan(project, resolvedMediaMap, outputPath) {
 
   const visualOverlays = [];
   const audioLabels = [];
+  const subtitleEvents = [];
 
   for (const { track, clip } of clips) {
     const mId = clip.media_id || clip.mediaId;
@@ -111,6 +143,14 @@ function buildFfmpegPlan(project, resolvedMediaMap, outputPath) {
     const endStr = numStr(sEnd);
     const tStartStr = numStr(tStart);
     const outDur = (sEnd - sStart) / speed;
+
+    if (clip.subtitle) {
+      if (track.kind === 'overlay' || track.type === 'overlay') {
+        subtitleEvents.push({ clip, start: tStart, end: tStart + outDur });
+      }
+      continue;
+    }
+    if (!mId) continue;
 
     if (track.type !== 'audio' && track.kind !== 'audio') {
       let curr = nextLabel('trim');
@@ -217,6 +257,31 @@ function buildFfmpegPlan(project, resolvedMediaMap, outputPath) {
     );
     base = resLabel;
   });
+
+  if (subtitleEvents.length) {
+    for (const ev of subtitleEvents) {
+      const fontFile = resolveFontFile(ev.clip.subtitle.fontId);
+      if (!fontFile) continue;
+      const next = nextLabel('sub');
+      const tf = ev.clip.transform || {};
+      const x = Math.round((tf.x || 0) * width);
+      const y = Math.round((tf.y || 0) * height);
+      const fontSize = Math.max(12, Math.round((ev.clip.subtitle.fontSize || 48) * (height / 1080) * (tf.scale || 1)));
+      const color = String(ev.clip.subtitle.color || '#ffffff').replace('#', '');
+      const text = escapeDrawtext(ev.clip.subtitle.text || '');
+      const fontEsc = escapeDrawtext(fontFile.replace(/\\/g, '/'));
+      const enable = `enable='between(t\\,${numStr(ev.start)}\\,${numStr(ev.end)})'`;
+      const common = `fontfile='${fontEsc}':text='${text}':fontsize=${fontSize}:fontcolor=0x${color}:borderw=2:bordercolor=black@0.7:${enable}`;
+      if (ev.clip.subtitle.bold) {
+        const mid = nextLabel('subb');
+        filters.push(`[${base}]drawtext=${common}:x=${x}:y=${y}[${mid}]`);
+        filters.push(`[${mid}]drawtext=${common}:x=${x + 2}:y=${y}[${next}]`);
+      } else {
+        filters.push(`[${base}]drawtext=${common}:x=${x}:y=${y}[${next}]`);
+      }
+      base = next;
+    }
+  }
 
   const fps = exportSettings.fps || 30;
   filters.push(`[${base}]trim=duration=${totalDurationStr},setpts=PTS-STARTPTS,fps=${fps},format=yuv420p[vout]`);

@@ -25,6 +25,9 @@ RUN cd server && if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 COPY server/ ./server/
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+COPY assets/fonts ./assets/fonts
+
+ENV CADRIA_FONT_FILE=/app/assets/fonts/GowunDodum-Regular.ttf
 
 RUN groupadd --system cadria \
   && useradd --system --gid cadria --home-dir /app --shell /usr/sbin/nologin cadria \

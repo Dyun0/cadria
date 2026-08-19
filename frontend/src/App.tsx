@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   ArrowDownToLine, Check, ChevronLeft, ChevronRight, Copy, Crop, Download, FilePlus, Film, FolderUp, Gauge, LoaderCircle, Lock, Maximize2,
-  Pause, Play, Plus, Redo2, RotateCw, Scissors, SkipBack, Trash2, Undo2, Unlink, Volume2, VolumeX, X,
+  Bold, Pause, Play, Plus, Redo2, RotateCw, Scissors, SkipBack, Trash2, Type, Undo2, Unlink, Volume2, VolumeX, X,
 } from 'lucide-react';
 import { api, type ExportJob } from './api/transport';
 import { clipDuration, moveClip, projectDuration, trimClip } from './core/edit';
-import { clipMedia, type Clip, type ExportSettings, type Media, type NormalizedCrop, type ProjectV1 } from './core/types';
+import { SUBTITLE_FONTS, subtitleFontFamily } from './core/fonts';
+import { clipMedia, isSubtitleClip, type Clip, type ExportSettings, type Media, type NormalizedCrop, type ProjectV1 } from './core/types';
 import { findSelectedClip, useEditorStore } from './store/editorStore';
 import './tokens.css';
 import './styles.css';
@@ -196,9 +197,9 @@ function Stage({ openCanvasContextMenu }: { openCanvasContextMenu: (e: React.Mou
         </select>
 
         {isCustomRes && <>
-          <input className="resolution-input" style={{ marginLeft: '6px' }} type="number" value={s.project.export.width} onChange={(e) => handleCustomDimension('width', Number(e.target.value))} />
+          <DraftNumberInput className="resolution-input" style={{ marginLeft: '6px' }} min={1} value={s.project.export.width} onCommit={(n) => handleCustomDimension('width', n)} />
           <span>×</span>
-          <input className="resolution-input" type="number" value={s.project.export.height} onChange={(e) => handleCustomDimension('height', Number(e.target.value))} />
+          <DraftNumberInput className="resolution-input" min={1} value={s.project.export.height} onCommit={(n) => handleCustomDimension('height', n)} />
         </>}
       </div>
     </div>
@@ -216,13 +217,16 @@ function Stage({ openCanvasContextMenu }: { openCanvasContextMenu: (e: React.Mou
         {s.project.tracks.map((track, trackIdx) => {
           if (track.kind === 'audio') return null;
           return track.clips.map((clip) => {
-            const media = clipMedia(s.project.media, clip); if (!media) return null;
             const active = s.playhead >= clip.timelineStart && s.playhead <= clip.timelineStart + clipDuration(clip);
             if (!active) return null;
+            if (isSubtitleClip(clip)) {
+              return <SubtitleLayer key={clip.id} clip={clip} selected={s.selectedClipId === clip.id} zIndex={(trackIdx + 1) * 10} stageRef={frame} setGuideLine={setGuideLine} onClick={() => useEditorStore.setState({ selectedClipId: clip.id })} openCanvasContextMenu={openCanvasContextMenu} />;
+            }
+            const media = clipMedia(s.project.media, clip); if (!media) return null;
             return <ClipRender key={clip.id} clip={clip} media={media} playhead={s.playhead} playing={s.playing} selected={s.selectedClipId === clip.id} zIndex={(trackIdx + 1) * 10} stageRef={frame} setGuideLine={setGuideLine} onClick={() => useEditorStore.setState({ selectedClipId: clip.id })} openCanvasContextMenu={openCanvasContextMenu} />;
           });
         })}
-        {s.cropMode && current && <CropOverlay clip={current} stageRef={frame} />}
+        {s.cropMode && current && !current.subtitle && <CropOverlay clip={current} stageRef={frame} />}
         {!s.project.tracks.some((t) => t.clips.length > 0) && <div className="stage-empty"><Film /><span>미디어를 타임라인으로 끌어다 놓으세요</span></div>}
       </div>
     </div>
@@ -265,6 +269,130 @@ function getBackgroundCss(bg: ProjectV1['background']) {
   return bg.color;
 }
 
+function beginStageDrag(
+  e: ReactPointerEvent,
+  clip: Clip,
+  stageRef: React.RefObject<HTMLDivElement | null>,
+  setGuideLine: (g: { x?: number; y?: number }) => void,
+  onClick: () => void,
+) {
+  onClick();
+  const box = stageRef.current?.getBoundingClientRect(); if (!box) return;
+  const startX = e.clientX, startY = e.clientY;
+  const initialTransform = { ...clip.transform };
+  const s = useEditorStore.getState();
+  const baseline = structuredClone(s.project); let latest = baseline; let changed = false;
+
+  const otherClipTargets: { x: number[]; y: number[] } = { x: [0, 0.5, 1], y: [0, 0.5, 1] };
+  for (const tr of s.project.tracks) {
+    if (tr.kind === 'audio') continue;
+    for (const cl of tr.clips) {
+      if (cl.id === clip.id) continue;
+      const active = s.playhead >= cl.timelineStart && s.playhead <= cl.timelineStart + clipDuration(cl);
+      if (!active) continue;
+      const cW = cl.transform.width * cl.transform.scale;
+      const cH = cl.transform.height * cl.transform.scale;
+      otherClipTargets.x.push(cl.transform.x, cl.transform.x + cW / 2, cl.transform.x + cW);
+      otherClipTargets.y.push(cl.transform.y, cl.transform.y + cH / 2, cl.transform.y + cH);
+    }
+  }
+
+  const move = (p: PointerEvent) => {
+    const dx = (p.clientX - startX) / box.width;
+    const dy = (p.clientY - startY) / box.height;
+    let rawX = initialTransform.x + dx;
+    let rawY = initialTransform.y + dy;
+    const curW = initialTransform.width * initialTransform.scale;
+    const curH = initialTransform.height * initialTransform.scale;
+    const SNAP = 0.03;
+    let snapX: number | undefined, snapY: number | undefined;
+
+    for (const targetX of otherClipTargets.x) {
+      if (Math.abs(rawX - targetX) <= SNAP) { rawX = targetX; snapX = targetX; break; }
+      if (Math.abs(rawX + curW - targetX) <= SNAP) { rawX = targetX - curW; snapX = targetX; break; }
+      if (Math.abs(rawX + curW / 2 - targetX) <= SNAP) { rawX = targetX - curW / 2; snapX = targetX; break; }
+    }
+    for (const targetY of otherClipTargets.y) {
+      if (Math.abs(rawY - targetY) <= SNAP) { rawY = targetY; snapY = targetY; break; }
+      if (Math.abs(rawY + curH - targetY) <= SNAP) { rawY = targetY - curH; snapY = targetY; break; }
+      if (Math.abs(rawY + curH / 2 - targetY) <= SNAP) { rawY = targetY - curH / 2; snapY = targetY; break; }
+    }
+
+    setGuideLine({ x: snapX, y: snapY });
+    latest = structuredClone(baseline); changed = true;
+    const target = latest.tracks.flatMap((track) => track.clips).find((item) => item.id === clip.id);
+    if (target) target.transform = { ...target.transform, x: rawX, y: rawY };
+    useEditorStore.setState({ project: latest });
+  };
+
+  const up = () => {
+    setGuideLine({});
+    if (changed) { useEditorStore.setState({ project: baseline }); useEditorStore.getState().commit(latest); }
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+}
+
+function beginStageTransform(
+  e: ReactPointerEvent,
+  clip: Clip,
+  handle: string,
+  stageRef: React.RefObject<HTMLDivElement | null>,
+  setGuideLine: (g: { x?: number; y?: number }) => void,
+) {
+  e.stopPropagation();
+  const box = stageRef.current?.getBoundingClientRect(); if (!box) return;
+  const start = { x: e.clientX, y: e.clientY, transform: { ...clip.transform } };
+  const baseline = structuredClone(useEditorStore.getState().project); let latest = baseline; let changed = false;
+
+  const move = (p: PointerEvent) => {
+    const dx = (p.clientX - start.x) / box.width;
+    const dy = (p.clientY - start.y) / box.height;
+    const next = { ...start.transform };
+    const SNAP = 0.04;
+    let snapX: number | undefined, snapY: number | undefined;
+
+    if (handle.includes('e')) {
+      let newW = Math.max(0.05, start.transform.width + dx);
+      if (Math.abs(start.transform.x + newW - 1) <= SNAP) { newW = 1 - start.transform.x; snapX = 1; }
+      else if (Math.abs(start.transform.x + newW / 2 - 0.5) <= SNAP) { snapX = 0.5; }
+      next.width = newW;
+    }
+    if (handle.includes('w')) {
+      let newW = Math.max(0.05, start.transform.width - dx);
+      let newX = start.transform.x + (start.transform.width - newW);
+      if (Math.abs(newX) <= SNAP) { newX = 0; newW = start.transform.x + start.transform.width; snapX = 0; }
+      else if (Math.abs(newX + newW / 2 - 0.5) <= SNAP) { snapX = 0.5; }
+      next.x = newX; next.width = newW;
+    }
+    if (handle.includes('s')) {
+      let newH = Math.max(0.05, start.transform.height + dy);
+      if (Math.abs(start.transform.y + newH - 1) <= SNAP) { newH = 1 - start.transform.y; snapY = 1; }
+      else if (Math.abs(start.transform.y + newH / 2 - 0.5) <= SNAP) { snapY = 0.5; }
+      next.height = newH;
+    }
+    if (handle.includes('n')) {
+      let newH = Math.max(0.05, start.transform.height - dy);
+      let newY = start.transform.y + (start.transform.height - newH);
+      if (Math.abs(newY) <= SNAP) { newY = 0; newH = start.transform.y + start.transform.height; snapY = 0; }
+      else if (Math.abs(newY + newH / 2 - 0.5) <= SNAP) { snapY = 0.5; }
+      next.y = newY; next.height = newH;
+    }
+    setGuideLine({ x: snapX, y: snapY });
+
+    latest = structuredClone(baseline); changed = true;
+    const target = latest.tracks.flatMap((track) => track.clips).find((item) => item.id === clip.id);
+    if (target) target.transform = next;
+    useEditorStore.setState({ project: latest });
+  };
+  const up = () => {
+    setGuideLine({});
+    if (changed) { useEditorStore.setState({ project: baseline }); useEditorStore.getState().commit(latest); }
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+}
+
 function ClipRender({ clip, media, playhead, playing, selected, zIndex, stageRef, setGuideLine, onClick, openCanvasContextMenu }: { clip: Clip; media: any; playhead: number; playing: boolean; selected: boolean; zIndex?: number; stageRef: React.RefObject<HTMLDivElement | null>; setGuideLine: (g: { x?: number; y?: number }) => void; onClick: () => void; openCanvasContextMenu: (e: React.MouseEvent, clipId: string) => void }) {
   const video = useRef<HTMLVideoElement>(null); const t = clip.transform; const c = clip.crop;
   const [isMediaLoading, setIsMediaLoading] = useState(!media.isImage);
@@ -298,164 +426,11 @@ function ClipRender({ clip, media, playhead, playing, selected, zIndex, stageRef
   }, [playhead, clip, playing, media.isImage]);
 
   const handlePointerDown = (e: ReactPointerEvent) => {
-    onClick();
-    const box = stageRef.current?.getBoundingClientRect(); if (!box) return;
-    const startX = e.clientX, startY = e.clientY;
-    const initialTransform = { ...clip.transform };
-    const s = useEditorStore.getState();
-    const baseline = structuredClone(s.project); let latest = baseline; let changed = false;
-
-    // Collect other active video/overlay clip edge targets for inter-clip magnetic snapping
-    const otherClipTargets: { x: number[]; y: number[] } = { x: [0, 0.5, 1], y: [0, 0.5, 1] };
-    for (const tr of s.project.tracks) {
-      if (tr.kind === 'audio') continue;
-      for (const cl of tr.clips) {
-        if (cl.id === clip.id) continue;
-        const active = s.playhead >= cl.timelineStart && s.playhead <= cl.timelineStart + clipDuration(cl);
-        if (!active) continue;
-        const cW = cl.transform.width * cl.transform.scale;
-        const cH = cl.transform.height * cl.transform.scale;
-        otherClipTargets.x.push(cl.transform.x, cl.transform.x + cW / 2, cl.transform.x + cW);
-        otherClipTargets.y.push(cl.transform.y, cl.transform.y + cH / 2, cl.transform.y + cH);
-      }
-    }
-
-    const move = (p: PointerEvent) => {
-      const dx = (p.clientX - startX) / box.width;
-      const dy = (p.clientY - startY) / box.height;
-      let rawX = initialTransform.x + dx;
-      let rawY = initialTransform.y + dy;
-
-      const curW = initialTransform.width * initialTransform.scale;
-      const curH = initialTransform.height * initialTransform.scale;
-      const SNAP_PX = 0.03;
-      let snapX: number | undefined, snapY: number | undefined;
-
-      // Magnetic snapping for X (left, center, right edges) against all other video clips
-      for (const targetX of otherClipTargets.x) {
-        if (Math.abs(rawX - targetX) <= SNAP_PX) { rawX = targetX; snapX = targetX; break; }
-        if (Math.abs(rawX + curW - targetX) <= SNAP_PX) { rawX = targetX - curW; snapX = targetX; break; }
-        if (Math.abs(rawX + curW / 2 - targetX) <= SNAP_PX) { rawX = targetX - curW / 2; snapX = targetX; break; }
-      }
-
-      // Magnetic snapping for Y (top, middle, bottom edges) against all other video clips
-      for (const targetY of otherClipTargets.y) {
-        if (Math.abs(rawY - targetY) <= SNAP_PX) { rawY = targetY; snapY = targetY; break; }
-        if (Math.abs(rawY + curH - targetY) <= SNAP_PX) { rawY = targetY - curH; snapY = targetY; break; }
-        if (Math.abs(rawY + curH / 2 - targetY) <= SNAP_PX) { rawY = targetY - curH / 2; snapY = targetY; break; }
-      }
-
-      setGuideLine({ x: snapX, y: snapY });
-      latest = structuredClone(baseline); changed = true;
-      const target = latest.tracks.flatMap((track) => track.clips).find((item) => item.id === clip.id);
-      if (target) target.transform = { ...target.transform, x: rawX, y: rawY };
-      useEditorStore.setState({ project: latest });
-    };
-
-    const up = () => {
-      setGuideLine({});
-      if (changed) { useEditorStore.setState({ project: baseline }); useEditorStore.getState().commit(latest); }
-      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
-    };
-    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+    beginStageDrag(e, clip, stageRef, setGuideLine, onClick);
   };
 
   const beginTransform = (e: ReactPointerEvent, handle: string) => {
-    e.stopPropagation();
-    const box = stageRef.current?.getBoundingClientRect(); if (!box) return;
-    const start = { x: e.clientX, y: e.clientY, transform: { ...clip.transform } };
-    const initialRatio = start.transform.width / start.transform.height;
-    const baseline = structuredClone(useEditorStore.getState().project); let latest = baseline; let changed = false;
-
-    // Opposite Anchor Point calculation for 100% fixed corner
-    const anchorX = handle.includes('w') ? start.transform.x + start.transform.width : start.transform.x;
-    const anchorY = handle.includes('n') ? start.transform.y + start.transform.height : start.transform.y;
-
-    const move = (p: PointerEvent) => {
-      const dx = (p.clientX - start.x) / box.width;
-      const dy = (p.clientY - start.y) / box.height;
-      const next = { ...start.transform };
-
-      const isCorner = ['nw', 'ne', 'sw', 'se'].includes(handle);
-
-      if (isCorner) {
-        let newW = start.transform.width;
-        if (handle.includes('e')) newW = Math.max(0.05, start.transform.width + dx);
-        if (handle.includes('w')) newW = Math.max(0.05, start.transform.width - dx);
-
-        let curX = handle.includes('w') ? anchorX - newW : anchorX;
-        const SNAP = 0.04;
-        let snapX: number | undefined, snapY: number | undefined;
-
-        // Snap left/right/center while preserving aspect ratio
-        if (Math.abs(curX) <= SNAP) { curX = 0; if (handle.includes('w')) newW = anchorX; snapX = 0; }
-        else if (Math.abs(curX + newW - 1) <= SNAP) { newW = 1 - curX; snapX = 1; }
-        else if (Math.abs(curX + newW / 2 - 0.5) <= SNAP) { snapX = 0.5; }
-
-        let newH = Math.max(0.05, newW / initialRatio);
-        let curY = handle.includes('n') ? anchorY - newH : anchorY;
-
-        // Snap top/bottom/center
-        if (Math.abs(curY) <= SNAP) { curY = 0; if (handle.includes('n')) newH = anchorY; newW = newH * initialRatio; snapY = 0; }
-        else if (Math.abs(curY + newH - 1) <= SNAP) { snapY = 1; }
-        else if (Math.abs(curY + newH / 2 - 0.5) <= SNAP) { snapY = 0.5; }
-
-        // Recalculate curX & curY to strictly preserve aspect ratio
-        curX = handle.includes('w') ? anchorX - newW : anchorX;
-        curY = handle.includes('n') ? anchorY - newH : anchorY;
-
-        setGuideLine({ x: snapX, y: snapY });
-
-        next.width = newW;
-        next.height = newH;
-        next.x = curX;
-        next.y = curY;
-      } else {
-        // Edge center handles (n, s, w, e) snapping
-        const SNAP = 0.04;
-        let snapX: number | undefined, snapY: number | undefined;
-
-        if (handle.includes('e')) {
-          let newW = Math.max(0.05, start.transform.width + dx);
-          if (Math.abs(start.transform.x + newW - 1) <= SNAP) { newW = 1 - start.transform.x; snapX = 1; }
-          else if (Math.abs(start.transform.x + newW / 2 - 0.5) <= SNAP) { snapX = 0.5; }
-          next.width = newW;
-        }
-        if (handle.includes('w')) {
-          let newW = Math.max(0.05, start.transform.width - dx);
-          let newX = start.transform.x + (start.transform.width - newW);
-          if (Math.abs(newX) <= SNAP) { newX = 0; newW = start.transform.x + start.transform.width; snapX = 0; }
-          else if (Math.abs(newX + newW / 2 - 0.5) <= SNAP) { snapX = 0.5; }
-          next.x = newX; next.width = newW;
-        }
-        if (handle.includes('s')) {
-          let newH = Math.max(0.05, start.transform.height + dy);
-          if (Math.abs(start.transform.y + newH - 1) <= SNAP) { newH = 1 - start.transform.y; snapY = 1; }
-          else if (Math.abs(start.transform.y + newH / 2 - 0.5) <= SNAP) { snapY = 0.5; }
-          next.height = newH;
-        }
-        if (handle.includes('n')) {
-          let newH = Math.max(0.05, start.transform.height - dy);
-          let newY = start.transform.y + (start.transform.height - newH);
-          if (Math.abs(newY) <= SNAP) { newY = 0; newH = start.transform.y + start.transform.height; snapY = 0; }
-          else if (Math.abs(newY + newH / 2 - 0.5) <= SNAP) { snapY = 0.5; }
-          next.y = newY; next.height = newH;
-        }
-
-        setGuideLine({ x: snapX, y: snapY });
-      }
-
-      latest = structuredClone(baseline); changed = true;
-      const target = latest.tracks.flatMap((track) => track.clips).find((item) => item.id === clip.id);
-      if (target) target.transform = next;
-      useEditorStore.setState({ project: latest });
-    };
-    const up = () => {
-      setGuideLine({});
-      if (changed) { useEditorStore.setState({ project: baseline }); useEditorStore.getState().commit(latest); }
-      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
-    };
-    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+    beginStageTransform(e, clip, handle, stageRef, setGuideLine);
   };
 
   const cropW = Math.max(0.001, c?.width || 1);
@@ -532,6 +507,28 @@ function CropOverlay({ clip, stageRef }: { clip: Clip; stageRef: React.RefObject
     </div></div></div>;
 }
 
+function SubtitleLayer({ clip, selected, zIndex, stageRef, setGuideLine, onClick, openCanvasContextMenu }: { clip: Clip; selected: boolean; zIndex?: number; stageRef: React.RefObject<HTMLDivElement | null>; setGuideLine: (g: { x?: number; y?: number }) => void; onClick: () => void; openCanvasContextMenu: (e: React.MouseEvent, clipId: string) => void }) {
+  const t = clip.transform;
+  const sub = clip.subtitle!;
+  const style: CSSProperties = {
+    left: `${t.x * 100}%`, top: `${t.y * 100}%`,
+    width: `${t.width * t.scale * 100}%`, height: `${t.height * t.scale * 100}%`,
+    transform: `rotate(${t.rotation}deg)`,
+    zIndex: zIndex ?? 20,
+  };
+  return <div className={`stage-clip subtitle-clip ${selected ? 'selected' : ''}`} style={style} onPointerDown={(e) => beginStageDrag(e, clip, stageRef, setGuideLine, onClick)} onContextMenu={(e) => { e.stopPropagation(); openCanvasContextMenu(e, clip.id); }}>
+    <div className={`subtitle-text ${sub.bold ? 'is-bold' : ''}`} style={{
+      color: sub.color,
+      fontSize: `calc(${sub.fontSize} / 1080 * 100cqh)`,
+      fontFamily: `${subtitleFontFamily(sub.fontId)}, sans-serif`,
+      fontWeight: sub.bold ? 700 : 400,
+    }}>{sub.text}</div>
+    {selected && <div className="transform-handles">
+      {['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'].map((h) => <button key={h} aria-label={`${h} 크기 조절 핸들`} className={`transform-handle ${h}`} onPointerDown={(e) => beginStageTransform(e, clip, h, stageRef, setGuideLine)} />)}
+    </div>}
+  </div>;
+}
+
 function Inspector() {
   const s = useEditorStore(); const clip = findSelectedClip(s);
   const expW = s.project.export.width; const expH = s.project.export.height;
@@ -553,12 +550,13 @@ function Inspector() {
   };
 
   const isAudioTrack = s.project.tracks.find(t => t.clips.some(c => c.id === clip?.id))?.kind === 'audio';
+  const isSubtitle = Boolean(clip?.subtitle);
 
   return <aside className="inspector" aria-label="인스펙터">
     <div className="panel-heading">
       <div>
         <span>{isAudioTrack ? 'AUDIO TOOLKIT' : 'STUDIO TOOLKIT'}</span>
-        <h2>{!clip ? '프로젝트 설정' : isAudioTrack ? '오디오 편집 도구' : '비디오 편집 도구'}</h2>
+        <h2>{!clip ? '프로젝트 설정' : isSubtitle ? '자막 편집 도구' : isAudioTrack ? '오디오 편집 도구' : '비디오 편집 도구'}</h2>
       </div>
     </div>
     {!clip ? <><Section title="캔버스">
@@ -574,6 +572,43 @@ function Inspector() {
       {s.project.background.type === 'blur' && <><Field label="흐림 소스"><select value={s.project.background.mediaId ?? ''} onChange={(e) => updateProject((project) => { project.background.mediaId = e.target.value || undefined; })}><option value="">선택</option>{Object.values(s.project.media).map((media) => <option key={media.id} value={media.id}>{media.name}</option>)}</select></Field>
         <Field label={`흐림 ${s.project.background.blur}px`}><input type="range" min="4" max="48" value={s.project.background.blur} onChange={(e) => updateProject((project) => { project.background.blur = Number(e.target.value); })} /></Field></>}
     </Section><p className="empty" style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: '11px', whiteSpace: 'nowrap', margin: 0 }}>클립을 선택하면 편집할 수 있습니다.</p></> :
+      isSubtitle && clip.subtitle ? <>
+        <Section title="자막">
+          <Field label="내용"><textarea rows={3} value={clip.subtitle.text} onChange={(e) => s.updateClip(clip.id, { subtitle: { ...clip.subtitle!, text: e.target.value } })} /></Field>
+          <Field label="시작 (초)">
+            <DraftNumberInput
+              value={Number(clip.timelineStart.toFixed(2))}
+              min={0}
+              step={0.1}
+              onCommit={(start) => s.updateClip(clip.id, { timelineStart: start })}
+            />
+          </Field>
+          <Field label="길이 (초)">
+            <DraftNumberInput
+              value={Number(clipDuration(clip).toFixed(2))}
+              min={0.1}
+              step={0.1}
+              onCommit={(duration) => s.updateClip(clip.id, { sourceEnd: clip.sourceStart + duration * clip.speed })}
+            />
+          </Field>
+          <Field label="폰트"><select value={clip.subtitle.fontId || 'gowun-dodum'} onChange={(e) => s.updateClip(clip.id, { subtitle: { ...clip.subtitle!, fontId: e.target.value } })}>
+            {SUBTITLE_FONTS.map((font) => <option key={font.id} value={font.id}>{font.name}</option>)}
+          </select></Field>
+          <Field label={`글자 크기 (${clip.subtitle.fontSize}px)`}><input type="range" min="18" max="120" value={clip.subtitle.fontSize} onChange={(e) => s.updateClip(clip.id, { subtitle: { ...clip.subtitle!, fontSize: Number(e.target.value) } })} /></Field>
+          <Field label="색"><input type="color" value={clip.subtitle.color} onChange={(e) => s.updateClip(clip.id, { subtitle: { ...clip.subtitle!, color: e.target.value } })} /></Field>
+          <button className={`tool-button ${clip.subtitle.bold ? 'active' : ''}`} title="굵게 (Ctrl+B)" onClick={() => s.updateClip(clip.id, { subtitle: { ...clip.subtitle!, bold: !clip.subtitle!.bold } })}>
+            <Bold /> 굵게
+          </button>
+        </Section>
+        <Section title="위치">
+          <div className="field-grid">
+            <Field label="X (PX)"><DraftNumberInput value={Math.round(clip.transform.x * expW)} onCommit={(n) => patchPx('x', n)} /></Field>
+            <Field label="Y (PX)"><DraftNumberInput value={Math.round(clip.transform.y * expH)} onCommit={(n) => patchPx('y', n)} /></Field>
+            <Field label="WIDTH (PX)"><DraftNumberInput value={Math.round(clip.transform.width * expW)} min={1} onCommit={(n) => patchPx('width', n)} /></Field>
+            <Field label="HEIGHT (PX)"><DraftNumberInput value={Math.round(clip.transform.height * expH)} min={1} onCommit={(n) => patchPx('height', n)} /></Field>
+          </div>
+        </Section>
+      </> :
       isAudioTrack ? <>
         <Section title="음량 조절">
           <label className="switch-row" style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -586,7 +621,7 @@ function Inspector() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input disabled={!clip.audio.enabled} type="range" min="0" max="2" step=".01" value={clip.audio.volume} onChange={e => s.updateClip(clip.id, { audio: { ...clip.audio, volume: Number(e.target.value) } })} style={{ flex: 1 }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                <input disabled={!clip.audio.enabled} type="number" min="0" max="200" style={{ width: '54px', textAlign: 'center', padding: '3px 4px', fontSize: '11.5px', borderRadius: '4px' }} value={Math.round(clip.audio.volume * 100)} onChange={e => s.updateClip(clip.id, { audio: { ...clip.audio, volume: Math.max(0, Math.min(200, Number(e.target.value))) / 100 } })} />
+                <DraftNumberInput disabled={!clip.audio.enabled} min={0} max={200} style={{ width: '54px', textAlign: 'center', padding: '3px 4px', fontSize: '11.5px', borderRadius: '4px' }} value={Math.round(clip.audio.volume * 100)} onCommit={(n) => s.updateClip(clip.id, { audio: { ...clip.audio, volume: n / 100 } })} />
                 <span style={{ fontSize: '11.5px', fontWeight: '600', color: 'var(--muted)' }}>%</span>
               </div>
             </div>
@@ -597,7 +632,7 @@ function Inspector() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input type="range" min="0.25" max="4.0" step="0.05" value={clip.speed} onChange={e => s.speed(clip.id, Number(e.target.value))} style={{ flex: 1 }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                <input type="number" min="0.25" max="4.0" step="0.1" style={{ width: '54px', textAlign: 'center', padding: '3px 4px', fontSize: '11.5px', borderRadius: '4px' }} value={clip.speed} onChange={e => s.speed(clip.id, Math.max(0.1, Number(e.target.value)))} />
+                <DraftNumberInput min={0.25} max={4} step={0.1} style={{ width: '54px', textAlign: 'center', padding: '3px 4px', fontSize: '11.5px', borderRadius: '4px' }} value={clip.speed} onCommit={(n) => s.speed(clip.id, n)} />
                 <span style={{ fontSize: '11.5px', fontWeight: '600', color: 'var(--muted)' }}>×</span>
               </div>
             </div>
@@ -606,10 +641,10 @@ function Inspector() {
       </> :
         <><Section title="변형">
           <div className="field-grid">
-            <Field label="X (PX)"><input type="number" value={Math.round(clip.transform.x * expW)} onChange={e => patchPx('x', Number(e.target.value))} /></Field>
-            <Field label="Y (PX)"><input type="number" value={Math.round(clip.transform.y * expH)} onChange={e => patchPx('y', Number(e.target.value))} /></Field>
-            <Field label="WIDTH (PX)"><input type="number" value={Math.round(clip.transform.width * expW)} onChange={e => patchPx('width', Number(e.target.value))} /></Field>
-            <Field label="HEIGHT (PX)"><input type="number" value={Math.round(clip.transform.height * expH)} onChange={e => patchPx('height', Number(e.target.value))} /></Field>
+            <Field label="X (PX)"><DraftNumberInput value={Math.round(clip.transform.x * expW)} onCommit={(n) => patchPx('x', n)} /></Field>
+            <Field label="Y (PX)"><DraftNumberInput value={Math.round(clip.transform.y * expH)} onCommit={(n) => patchPx('y', n)} /></Field>
+            <Field label="WIDTH (PX)"><DraftNumberInput value={Math.round(clip.transform.width * expW)} min={1} onCommit={(n) => patchPx('width', n)} /></Field>
+            <Field label="HEIGHT (PX)"><DraftNumberInput value={Math.round(clip.transform.height * expH)} min={1} onCommit={(n) => patchPx('height', n)} /></Field>
           </div>
           <Field label={`크기 ${Math.round(clip.transform.scale * 100)}%`}><input type="range" min=".1" max="2" step=".01" value={clip.transform.scale} onChange={e => patchTransform('scale', Number(e.target.value))} /></Field>
           <div className="btn-group-2" style={{ marginBottom: '6px' }}>
@@ -629,7 +664,7 @@ function Inspector() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input type="range" min="0.25" max="4.0" step="0.05" value={clip.speed} onChange={e => s.speed(clip.id, Number(e.target.value))} style={{ flex: 1 }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                <input type="number" min="0.25" max="4.0" step="0.1" style={{ width: '56px', textAlign: 'center' }} value={clip.speed} onChange={e => s.speed(clip.id, Math.max(0.1, Number(e.target.value)))} />
+                <DraftNumberInput min={0.25} max={4} step={0.1} style={{ width: '56px', textAlign: 'center' }} value={clip.speed} onCommit={(n) => s.speed(clip.id, n)} />
                 <span style={{ fontSize: '12px', fontWeight: 'bold' }}>×</span>
               </div>
             </div>
@@ -638,6 +673,57 @@ function Inspector() {
 }
 function Section({ title, children }: { title: string; children: React.ReactNode }) { return <section className="inspector-section"><h3>{title}</h3>{children}</section> }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="field"><span>{label}</span>{children}</label> }
+
+function DraftNumberInput({
+  value,
+  onCommit,
+  min,
+  max,
+  step,
+  style,
+  disabled,
+  className,
+}: {
+  value: number;
+  onCommit: (value: number) => void;
+  min?: number;
+  max?: number;
+  step?: number | string;
+  style?: CSSProperties;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [text, setText] = useState(String(value));
+  useEffect(() => {
+    if (!focused) setText(String(value));
+  }, [value, focused]);
+
+  const finish = () => {
+    const parsed = Number(text);
+    const invalid = text.trim() === '' || Number.isNaN(parsed)
+      || (min != null && parsed < min)
+      || (max != null && parsed > max);
+    if (invalid) {
+      setText(String(value));
+      return;
+    }
+    onCommit(parsed);
+  };
+
+  return <input
+    type="number"
+    className={className}
+    step={step}
+    style={style}
+    disabled={disabled}
+    value={focused ? text : value}
+    onFocus={() => { setFocused(true); setText(String(value)); }}
+    onChange={(e) => setText(e.target.value)}
+    onBlur={() => { finish(); setFocused(false); }}
+    onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
+  />;
+}
 
 function Timeline({ openContextMenu, openTrackContextMenu }: { openContextMenu: (e: React.MouseEvent, clipId?: string) => void; openTrackContextMenu: (e: React.MouseEvent, trackId: string) => void }) {
   const s = useEditorStore(); const scroll = useRef<HTMLDivElement>(null); const duration = Math.max(10, projectDuration(s.project) + 2); const width = duration * s.zoom;
@@ -757,6 +843,7 @@ function Timeline({ openContextMenu, openTrackContextMenu }: { openContextMenu: 
         <button className="tool-button" onClick={s.ripple} title="빈 공간 당기기 (G)">리플 지우기</button>
         <div className="divider" style={{ height: '14px', borderLeft: '1px solid var(--line)', margin: '0 4px' }} />
         <button className="tool-button" onClick={() => s.addTrack('overlay')} title="신규 오버레이 트랙 추가"><Plus /> 오버레이 트랙</button>
+        <button className="tool-button" onClick={() => s.addSubtitleClip()} title="오버레이 트랙에 자막 추가"><Type /> 자막</button>
         <button className="tool-button" onClick={() => s.addTrack('audio')} title="신규 오디오 트랙 추가"><Plus /> 오디오 트랙</button>
       </div>
       <span className="spacer" />
@@ -772,8 +859,8 @@ function Timeline({ openContextMenu, openTrackContextMenu }: { openContextMenu: 
         {s.project.tracks.map(track => <div className="track-lane" key={track.id} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const mediaId = e.dataTransfer.getData('text/plain'); if (mediaId) s.addClip(mediaId, track.id); }}>{track.clips.map(clip => {
           const m = clipMedia(s.project.media, clip);
           const filename = m?.originalName || m?.name || '파일';
-          const clipLabel = `${track.kind === 'audio' ? '오디오' : '비디오'} - ${filename}`;
-          return <div key={clip.id} className={`timeline-clip ${track.kind} ${s.selectedClipId === clip.id ? 'selected' : ''}`} style={{ left: clip.timelineStart * s.zoom, width: Math.max(8, clipDuration(clip) * s.zoom) }} onPointerDown={e => drag(e, clip, track.id)} onDoubleClick={(e) => { e.stopPropagation(); useEditorStore.setState({ playhead: clip.timelineStart, selectedClipId: clip.id, playing: false }); }} onContextMenu={(e) => { e.stopPropagation(); openContextMenu(e, clip.id); }}>
+          const clipLabel = clip.subtitle ? `자막 - ${clip.subtitle.text || '자막'}` : `${track.kind === 'audio' ? '오디오' : '비디오'} - ${filename}`;
+          return <div key={clip.id} className={`timeline-clip ${track.kind} ${clip.subtitle ? 'subtitle' : ''} ${s.selectedClipId === clip.id ? 'selected' : ''}`} style={{ left: clip.timelineStart * s.zoom, width: Math.max(8, clipDuration(clip) * s.zoom) }} onPointerDown={e => drag(e, clip, track.id)} onDoubleClick={(e) => { e.stopPropagation(); useEditorStore.setState({ playhead: clip.timelineStart, selectedClipId: clip.id, playing: false }); }} onContextMenu={(e) => { e.stopPropagation(); openContextMenu(e, clip.id); }}>
             <button className="trim-handle left" aria-label="시작 트림" onPointerDown={e => trim(e, clip, 'start')} /><span>{clipLabel}</span><button className="trim-handle right" aria-label="끝 트림" onPointerDown={e => trim(e, clip, 'end')} />
           </div>;
         })}</div>)}
@@ -1123,7 +1210,19 @@ export default function App() {
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      const target = e.target; if (target instanceof HTMLElement && target.matches('input,select,textarea,[contenteditable="true"]')) return; const modifier = e.ctrlKey || e.metaKey; if (e.code === 'Space') { e.preventDefault(); useEditorStore.setState(s => ({ playing: !s.playing })) } else if (modifier && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? useEditorStore.getState().redo() : useEditorStore.getState().undo() } else if (modifier && e.key.toLowerCase() === 'y') { e.preventDefault(); useEditorStore.getState().redo() } else if (modifier && e.key.toLowerCase() === 'c') { e.preventDefault(); useEditorStore.getState().copyClip() } else if (modifier && e.key.toLowerCase() === 'x') { e.preventDefault(); useEditorStore.getState().cutClip() } else if (modifier && e.key.toLowerCase() === 'v') { e.preventDefault(); useEditorStore.getState().pasteClip() } else if (e.key.toLowerCase() === 's') { useEditorStore.getState().split() } else if (e.key.toLowerCase() === 'g') { useEditorStore.getState().ripple() } else if (e.key === 'Delete' || e.key === 'Backspace') useEditorStore.getState().remove()
+      const target = e.target;
+      const typing = target instanceof HTMLElement && target.matches('input,select,textarea,[contenteditable="true"]');
+      const modifier = e.ctrlKey || e.metaKey;
+      if (modifier && e.key.toLowerCase() === 'b') {
+        const selected = findSelectedClip(useEditorStore.getState());
+        if (selected?.subtitle) {
+          e.preventDefault();
+          useEditorStore.getState().updateClip(selected.id, { subtitle: { ...selected.subtitle, bold: !selected.subtitle.bold } });
+        }
+        return;
+      }
+      if (typing) return;
+      if (e.code === 'Space') { e.preventDefault(); useEditorStore.setState(s => ({ playing: !s.playing })) } else if (modifier && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? useEditorStore.getState().redo() : useEditorStore.getState().undo() } else if (modifier && e.key.toLowerCase() === 'y') { e.preventDefault(); useEditorStore.getState().redo() } else if (modifier && e.key.toLowerCase() === 'c') { e.preventDefault(); useEditorStore.getState().copyClip() } else if (modifier && e.key.toLowerCase() === 'x') { e.preventDefault(); useEditorStore.getState().cutClip() } else if (modifier && e.key.toLowerCase() === 'v') { e.preventDefault(); useEditorStore.getState().pasteClip() } else if (e.key.toLowerCase() === 's') { useEditorStore.getState().split() } else if (e.key.toLowerCase() === 'g') { useEditorStore.getState().ripple() } else if (e.key === 'Delete' || e.key === 'Backspace') useEditorStore.getState().remove()
     }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key)
   }, []);
 

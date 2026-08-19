@@ -52,6 +52,7 @@ export const moveClip = (project: ProjectV1, clipId: string, timelineStart: numb
   }
   const target = next.tracks.find((track) => track.id === (targetTrackId ?? sourceTrackId));
   if (!clip || !target || target.locked) return project;
+  if (clip.subtitle && target.kind !== 'overlay') return project;
   clip.timelineStart = snapFrame(Math.max(0, timelineStart), project.export.fps);
   target.clips.push(clip); target.clips.sort((a, b) => a.timelineStart - b.timelineStart);
   next.updatedAt = new Date().toISOString(); return next;
@@ -80,6 +81,7 @@ export function assertProject(project: ProjectV1): true {
   if (project.version !== 1 || project.export.fps <= 0) throw new Error('지원하지 않는 프로젝트입니다.');
   for (const track of project.tracks) for (const clip of track.clips) {
     if (clip.sourceStart < 0 || clip.sourceEnd <= clip.sourceStart || clip.timelineStart < 0 || clip.speed < .1 || clip.speed > 16) throw new Error(`잘못된 클립: ${clip.id}`);
+    if (clip.subtitle) continue;
     const { crop } = clip;
     if (crop.x < 0 || crop.y < 0 || crop.width <= 0 || crop.height <= 0 || crop.x + crop.width > 1.000001 || crop.y + crop.height > 1.000001) throw new Error(`잘못된 크롭: ${clip.id}`);
     if (clip.audio.volume < 0 || clip.audio.volume > 1) throw new Error(`잘못된 볼륨: ${clip.id}`);

@@ -50,31 +50,6 @@
   pointer-events: none;
 }
 
-.transform-handles {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.transform-handle {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  padding: 0;
-  border: 1px solid var(--ink-0);
-  background: var(--accent);
-  pointer-events: auto;
-}
-
-.transform-handle.nw { left: -5px; top: -5px; cursor: nwse-resize; }
-.transform-handle.n { left: calc(50% - 5px); top: -5px; cursor: ns-resize; }
-.transform-handle.ne { right: -5px; top: -5px; cursor: nesw-resize; }
-.transform-handle.w { left: -5px; top: calc(50% - 5px); cursor: ew-resize; }
-.transform-handle.e { right: -5px; top: calc(50% - 5px); cursor: ew-resize; }
-.transform-handle.sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
-.transform-handle.s { left: calc(50% - 5px); bottom: -5px; cursor: ns-resize; }
-.transform-handle.se { right: -5px; bottom: -5px; cursor: nwse-resize; }
-
 .crop-source {
   position: absolute;
   transform-origin: center;

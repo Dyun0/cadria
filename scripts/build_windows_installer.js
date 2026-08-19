@@ -164,5 +164,9 @@ if (!fs.existsSync(setupExe)) {
   throw new Error(`설치 파일이 생성되지 않았습니다: ${setupExe}`);
 }
 
+const rootExe = path.join(root, 'Cadria_Studio_Setup_1.0.0.exe');
+fs.copyFileSync(setupExe, rootExe);
+
 console.log('\n🎉 NSIS installer built:');
 console.log(`   ${setupExe}`);
+console.log(`   ${rootExe}`);
